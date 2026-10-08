@@ -1,0 +1,1968 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Tactical Map</title>
+<style>
+/* ── TOKENS ─────────────────────────────────────────────── */
+@font-face { font-family:"Geist"; font-style:normal; font-weight:100 900; font-display:swap;
+  src:url("assets/font/geist-latin-ext-wght-normal.woff2") format("woff2");
+  unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF; }
+@font-face { font-family:"Geist"; font-style:normal; font-weight:100 900; font-display:swap;
+  src:url("assets/font/geist-latin-wght-normal.woff2") format("woff2");
+  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD; }
+@font-face { font-family:"Geist Mono"; font-style:normal; font-weight:100 900; font-display:swap;
+  src:url("assets/font/geist-mono-latin-ext-wght-normal.woff2") format("woff2");
+  unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF; }
+@font-face { font-family:"Geist Mono"; font-style:normal; font-weight:100 900; font-display:swap;
+  src:url("assets/font/geist-mono-latin-wght-normal.woff2") format("woff2");
+  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD; }
+
+:root {
+  color-scheme:  dark;
+  --bg:          #0e1013;
+  --surface:     #16181c;
+  --surface-2:   #1e2126;
+  --border:      #272a30;
+  --border-hi:   #383c44;
+  --accent:      #7c9bff;
+  --accent-hi:   #9bb2ff;
+  --on-accent:   #0b0d12;
+  --accent-dim:  rgba(124,155,255,.14);
+  --accent-ring: rgba(124,155,255,.32);
+  --danger:      #ff6178;
+  --hostile:     #ff6178;   /* symbols: red by default … */
+  --friend:      #5ea8ff;   /* … blue when marked friendly */
+  --danger-dim:  #301a20;
+  --success:     #3ecf8e;
+  --warn:        #f0b232;
+  --text:        #e9ebee;
+  --text-2:      #9ba2ad;
+  --text-3:      #666d79;
+  --r-s:         6px;
+  --r-m:         10px;
+  --r-l:         14px;
+  --shadow-s:    0 1px 2px rgba(0,0,0,.4);
+  --shadow-m:    0 12px 32px -8px rgba(0,0,0,.65), 0 2px 8px rgba(0,0,0,.4);
+  --font:        "Geist","Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,sans-serif;
+  --mono:        "Geist Mono","SF Mono",Consolas,monospace;
+  --pad:         16px;
+  --safe-t:      env(safe-area-inset-top, 0px);
+  --safe-b:      env(safe-area-inset-bottom, 0px);
+}
+
+/* ── RESET ──────────────────────────────────────────────── */
+*,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
+html,body { width:100%; height:100%; overflow:hidden; background:var(--bg); color:var(--text);
+  font-family:var(--font); -webkit-font-smoothing:antialiased; }
+button,input,textarea { font:inherit; }
+button { cursor:pointer; border:none; }
+:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+
+/* ── SHELL ──────────────────────────────────────────────── */
+#app { position:relative; width:100%; height:100%; overflow:hidden; }
+#map { position:absolute; inset:0; overflow:hidden; cursor:crosshair;
+  background:var(--bg); touch-action:none; }
+#map.dragging { cursor:grabbing; }
+#canvas { position:absolute; inset:0; width:100%; height:100%; display:block; }
+
+/* ── ICON UTILITY ───────────────────────────────────────── */
+.icon { display:inline-block; background-color:currentColor;
+  -webkit-mask-size:contain; mask-size:contain;
+  -webkit-mask-repeat:no-repeat; mask-repeat:no-repeat;
+  -webkit-mask-position:center; mask-position:center; }
+
+/* ── OVERLAYS ───────────────────────────────────────────── */
+.lines-layer { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; z-index:180; }
+#overlayLabels { position:absolute; inset:0; pointer-events:none; z-index:210; }
+
+/* ── FLOATING CONTROLS ──────────────────────────────────── */
+.hud {
+  position:absolute; z-index:400; user-select:none;
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:var(--r-m); box-shadow:var(--shadow-s);
+}
+
+/* readout, top left */
+#hudInfo {
+  top:calc(var(--pad) + var(--safe-t)); left:var(--pad);
+  height:36px; display:flex; align-items:center;
+  font-size:12px; font-family:var(--mono); letter-spacing:-.01em; color:var(--text-2);
+}
+#coordsPanel { display:flex; align-items:center; gap:14px; padding:0 12px; min-width:0; }
+#coordsPanel .cp { display:flex; align-items:baseline; gap:6px; white-space:nowrap; }
+#coordsPanel .cl { color:var(--text-3); }
+#coordsPanel .cv { color:var(--text); }
+#zoomChip { align-self:stretch; display:flex; align-items:center; padding:0 12px;
+  border-left:1px solid var(--border); white-space:nowrap; }
+#zoomChip b { color:var(--text); font-weight:500; }
+#connDot {
+  width:7px; height:7px; border-radius:50%; flex-shrink:0; margin:0 12px 0 0;
+  background:var(--success); transition:background .3s;
+}
+#connDot.offline { background:var(--danger); animation:dotpulse 1.4s ease-in-out infinite; }
+@keyframes dotpulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+/* tool stack, top right */
+#toolbar {
+  top:calc(var(--pad) + var(--safe-t)); right:var(--pad);
+  display:flex; flex-direction:column; gap:1px;
+  background:var(--border); overflow:hidden;
+}
+.tb-btn {
+  width:36px; height:36px; flex-shrink:0;
+  display:flex; align-items:center; justify-content:center;
+  background:var(--surface); color:var(--text-2);
+  transition:background .12s, color .12s;
+}
+.tb-btn:hover { background:var(--surface-2); color:var(--text); }
+.tb-btn.danger:hover { background:var(--danger-dim); color:var(--danger); }
+.tb-btn.danger.armed { background:var(--danger); color:var(--on-accent); }
+.tb-btn.on { background:var(--accent-dim); color:var(--accent-hi); }
+.tb-btn.accent { color:var(--accent); }
+.tb-btn.accent:hover { background:var(--accent-dim); color:var(--accent-hi); }
+.tb-icon { width:16px; height:16px; flex-shrink:0; }
+#tbAddBtn, #tbTgtBtn { display:none; }
+
+/* ── TIMELINE BAR ───────────────────────────────────────── */
+#timeBar {
+  left:50%; bottom:calc(var(--pad) + var(--safe-b)); transform:translateX(-50%);
+  width:min(720px, calc(100% - var(--pad)*2));
+  display:flex; flex-wrap:wrap; align-items:center; gap:6px 8px; padding:6px 8px;
+  transition:border-color .2s;
+}
+#timeBar.past { border-color:var(--warn); }
+.tl-step {
+  width:28px; height:28px; flex-shrink:0; display:flex; align-items:center; justify-content:center;
+  border-radius:var(--r-s); background:transparent; color:var(--text-2);
+  transition:background .12s, color .12s;
+}
+.tl-step .icon { display:block; width:14px; height:14px; }
+.tl-step:hover:not(:disabled) { background:var(--surface-2); color:var(--text); }
+.tl-step:disabled { opacity:.3; cursor:default; }
+
+/* Track: icon lane on top, slider rail below */
+.tl-track { position:relative; flex:1 1 100%; min-width:0; }
+#tlIcons { position:relative; z-index:1; height:20px; margin:0 7px; pointer-events:none; }
+.tl-grp { position:absolute; bottom:0; display:flex; align-items:flex-end; pointer-events:auto; cursor:pointer; }
+.tl-grp:hover .tl-ic { filter:brightness(1.3); }
+.tl-col { display:flex; flex-direction:column; gap:3px; }   /* one icon per type, stacked vertically */
+.tl-sp { width:18px; align-self:center; display:flex; justify-content:flex-end; padding-right:2px; color:var(--text-3); }
+.tl-sp .icon, .tl-gsp .icon { display:block; }
+.tl-gsp { position:absolute; bottom:2px; transform:translateX(-50%); color:var(--text-3); pointer-events:none; }
+.tl-ic { position:relative; width:18px; height:18px; flex-shrink:0; }
+.tl-ic .icon { display:block; }
+.tl-ic em {
+  position:absolute; right:-7px; bottom:-1px; min-width:14px; height:12px; padding:0 3px;
+  display:flex; align-items:center; justify-content:center;
+  border-radius:6px; background:var(--c); color:var(--on-accent); box-shadow:0 0 0 1.5px var(--surface);
+  font:normal 700 8.5px/1 var(--mono); letter-spacing:-.02em; white-space:nowrap;
+}
+.tl-rail { position:relative; height:28px; margin-top:-4px; }
+/* compress marks (squeezed empty stretches) sit behind the slider */
+#tlTicks { position:absolute; inset:0 7px; pointer-events:none; }
+#tlTicks i { position:absolute; top:50%; transform:translate(-50%,-50%); padding:0 3px; display:flex;
+  background:var(--surface); color:var(--text-3); }
+#tlRange {
+  position:relative; width:100%; height:28px; margin:0; cursor:pointer;
+  -webkit-appearance:none; appearance:none; background:transparent;
+}
+#tlRange::-webkit-slider-runnable-track { height:4px; border-radius:2px; background:var(--border-hi); }
+#tlRange::-moz-range-track { height:4px; border-radius:2px; background:var(--border-hi); }
+#tlRange::-webkit-slider-thumb { -webkit-appearance:none; box-sizing:border-box; width:14px; height:14px; margin-top:-5px;
+  border-radius:50%; background:var(--accent); border:2px solid var(--surface); box-shadow:0 0 0 1px var(--accent); }
+#tlRange::-moz-range-thumb { width:10px; height:10px; border-radius:50%;
+  background:var(--accent); border:2px solid var(--surface); box-shadow:0 0 0 1px var(--accent); }
+#timeBar.past #tlRange::-webkit-slider-thumb { background:var(--warn); box-shadow:0 0 0 1px var(--warn); }
+#timeBar.past #tlRange::-moz-range-thumb { background:var(--warn); box-shadow:0 0 0 1px var(--warn); }
+
+/* Dates sit below the track: From – To, or a single date when the window is one day */
+.tl-mid { flex:1 1 0; min-width:0; display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.tl-dates { display:flex; align-items:center; gap:8px; flex-shrink:0; }
+.tl-dates.day .tl-rng, .tl-dates:not(.day) .tl-dayw { display:none; }
+.tl-date { position:relative; flex-shrink:0; }
+#tlFrom, #tlTo, #tlDay, #ttTimeIn {
+  border:1px solid var(--border-hi); border-radius:var(--r-s); background:var(--surface);
+  color:var(--text); font-family:var(--mono); font-size:11.5px; outline:none;
+  user-select:text; -webkit-user-select:text;
+}
+#tlFrom, #tlTo, #tlDay { height:28px; width:176px; padding:0 28px 0 8px; }
+#tlDay { width:132px; }
+#tlFrom::-webkit-calendar-picker-indicator, #tlTo::-webkit-calendar-picker-indicator,
+#tlDay::-webkit-calendar-picker-indicator { display:none; }
+#timeBar:not(.past) #tlFrom, #timeBar:not(.past) #tlTo, #timeBar:not(.past) #tlDay { color:var(--text-3); }
+.tl-dpick {
+  position:absolute; right:3px; top:50%; transform:translateY(-50%); width:22px; height:22px;
+  display:flex; align-items:center; justify-content:center;
+  border-radius:4px; background:transparent; color:var(--text-2); transition:background .12s, color .12s;
+}
+.tl-dpick .icon { display:block; width:14px; height:14px; }
+.tl-dpick:hover { background:var(--surface-2); color:var(--text); }
+.tl-sep { color:var(--text-3); font-size:12px; flex-shrink:0; }
+.tl-chips { display:flex; gap:4px; flex-shrink:0; }
+.tl-chip {
+  height:28px; padding:0 9px; border-radius:var(--r-s); background:transparent;
+  color:var(--text-2); font-size:12px; font-family:var(--mono); font-weight:500;
+  transition:background .12s, color .12s;
+}
+.tl-chip:hover { background:var(--surface-2); color:var(--text); }
+.tl-chip.on { background:var(--accent-dim); color:var(--accent-hi); }
+#tlFrom:focus, #tlTo:focus, #tlDay:focus, #ttTimeIn:focus { border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-ring); }
+
+/* ── CONTEXT MENU ───────────────────────────────────────── */
+.ctx-menu {
+  position:absolute; width:176px; padding:4px;
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:var(--r-m); box-shadow:var(--shadow-m); z-index:500;
+}
+.ctx-item {
+  width:100%; height:34px; display:flex; align-items:center;
+  gap:10px; padding:0 8px; border:0; border-radius:var(--r-s);
+  background:transparent; color:var(--text); font-size:13px;
+  text-align:left; transition:background .1s;
+}
+.ctx-item:hover { background:var(--surface-2); }
+.ctx-icon { width:16px; height:16px; color:var(--text-2); flex-shrink:0; }
+.ctx-sep { height:1px; background:var(--border); margin:4px -4px; }
+.sym-wrap { position:relative; }
+.sym-sub {
+  position:absolute; left:calc(100% + 6px); top:-5px;
+  width:156px; padding:4px; background:var(--surface);
+  border:1px solid var(--border); border-radius:var(--r-m);
+  box-shadow:var(--shadow-m); display:none; z-index:501;
+}
+.sym-wrap:hover .sym-sub { display:block; }
+.sym-opt {
+  width:100%; height:32px; display:flex; align-items:center;
+  gap:10px; padding:0 8px; border:0; border-radius:var(--r-s);
+  background:transparent; color:var(--text); font-size:13px;
+  transition:background .1s;
+}
+.sym-opt:hover { background:var(--surface-2); }
+.sym-sub { --sym-c:var(--hostile); }
+.sym-sub.friendly { --sym-c:var(--friend); }
+/* red ⇄ blue slide switch (off = hostile, on = friendly) */
+.sw { position:relative; width:34px; height:20px; flex-shrink:0; border-radius:10px;
+  background:var(--hostile); transition:background .15s; }
+.sw::after { content:""; position:absolute; top:2px; left:2px; width:16px; height:16px; border-radius:50%;
+  background:#fff; box-shadow:0 1px 2px rgba(0,0,0,.4); transition:transform .15s; }
+.sw[aria-checked="true"] { background:var(--friend); }
+.sw[aria-checked="true"]::after { transform:translateX(14px); }
+.sym-aff, .tt-aff { display:flex; align-items:center; justify-content:space-between; gap:10px;
+  font-size:12px; font-weight:600; }
+.sym-aff { padding:4px 8px 8px; margin-bottom:4px; border-bottom:1px solid var(--border); }
+.tt-aff { margin-top:10px; padding-top:10px; border-top:1px solid var(--border); }
+
+
+/* ── DIALOGS ────────────────────────────────────────────── */
+.dlg-bd {
+  position:fixed; inset:0; display:none; align-items:center; justify-content:center;
+  background:rgba(0,0,0,.6); z-index:900; backdrop-filter:blur(4px);
+}
+.dlg-bd.open { display:flex; }
+.dlg-card {
+  width:360px; padding:22px;
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:var(--r-l); box-shadow:var(--shadow-m);
+}
+.dlg-card h3 { font-size:15px; font-weight:600; margin-bottom:2px; }
+.dlg-sub { color:var(--text-2); font-size:12.5px; margin-bottom:16px; }
+.dlg-card input,.dlg-card textarea {
+  width:100%; padding:9px 11px; margin-bottom:10px;
+  border:1px solid var(--border-hi); border-radius:var(--r-s);
+  background:var(--surface); color:var(--text); font-size:13px; outline:none;
+  transition:border-color .12s, box-shadow .12s;
+}
+.dlg-card input::placeholder,.dlg-card textarea::placeholder { color:var(--text-3); }
+.dlg-card input:focus,.dlg-card textarea:focus { border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-ring); }
+.dlg-card textarea { height:76px; resize:vertical; }
+.dlg-lbl { display:block; font-size:12px; color:var(--text-2); margin:2px 0 5px; }
+.dlg-acts { display:flex; justify-content:flex-end; gap:8px; margin-top:6px; }
+.dlg-btn {
+  height:34px; padding:0 14px; border-radius:var(--r-s);
+  border:1px solid var(--border-hi); background:var(--surface);
+  color:var(--text); font-size:13px; font-weight:500;
+  transition:background .12s, border-color .12s;
+}
+.dlg-btn:hover { background:var(--surface-2); }
+.dlg-btn.pri { background:var(--accent); border-color:var(--accent); color:var(--on-accent); font-weight:600; }
+.dlg-btn.pri:hover { background:var(--accent-hi); border-color:var(--accent-hi); }
+
+/* ── MARKERS ────────────────────────────────────────────── */
+.marker { position:absolute; transform:translate(-50%,-100%); z-index:250; cursor:pointer; user-select:none; }
+.marker.sym { transform:translate(-50%,-50%); }
+.mk-wrap { display:flex; flex-direction:column; align-items:center; }
+.mk-label {
+  font-size:11px; font-weight:600; white-space:nowrap; margin-bottom:2px;
+  text-shadow:0 0 2px #000, 0 0 3px #000, 0 0 6px #000, 0 1px 1px #000;
+}
+.mk-icon { width:28px; height:28px; transition:transform .15s, filter .15s;
+  filter:drop-shadow(0 1px 2px rgba(0,0,0,.7)); }
+.marker.sel .mk-icon { transform:scale(1.3); filter:drop-shadow(0 0 6px currentColor); }
+
+.tgt-mk {
+  position:absolute; width:26px; height:26px;
+  transform:translate(-50%,-50%); z-index:260; cursor:pointer;
+  filter:drop-shadow(0 1px 2px rgba(0,0,0,.7));
+}
+.tgt-mk.active { transform:translate(-50%,-50%) scale(1.2); }
+
+/* ── TOOLTIP ────────────────────────────────────────────── */
+#markerTT {
+  position:absolute; min-width:196px; max-width:260px;
+  padding:12px 14px;
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:var(--r-m); box-shadow:var(--shadow-m);
+  z-index:800; opacity:0; pointer-events:none;
+  transition:opacity .12s; font-size:12px;
+}
+#markerTT.vis { opacity:1; pointer-events:auto; }
+.tt-title { font-weight:600; color:var(--text); margin-bottom:8px; font-size:13px; }
+.tt-row { display:flex; justify-content:space-between; gap:12px;
+  color:var(--text-3); margin-bottom:3px; font-size:12px; }
+.tt-row .tt-val { font-family:var(--mono); font-size:11.5px; }
+.tt-val { color:var(--text); }
+.tt-note-sec { margin-top:10px; padding-top:10px; border-top:1px solid var(--border); }
+.tt-note-hdr {
+  font-size:12px; color:var(--text-3); margin-bottom:4px;
+  display:flex; align-items:center; justify-content:space-between;
+}
+.tt-note-hdr .edit-hint {
+  color:var(--accent); cursor:pointer; opacity:0; transition:opacity .12s;
+}
+#markerTT.vis:hover .edit-hint { opacity:1; }
+#ttNoteText {
+  font-size:12.5px; line-height:1.5; color:var(--text); cursor:pointer;
+  border-radius:4px; padding:1px 4px; margin:-1px -4px;
+  transition:background .12s;
+}
+#ttNoteText:hover { background:var(--surface-2); }
+#ttNoteText.na { color:var(--text-3); }
+#ttNoteEdit { display:none; margin-top:2px; }
+#ttNoteEdit.open { display:block; }
+#ttNoteInput {
+  width:100%; padding:7px 9px; border:1px solid var(--border-hi);
+  border-radius:var(--r-s); background:var(--surface); color:var(--text);
+  font-family:var(--font); font-size:12.5px; outline:none; resize:none;
+  transition:border-color .12s, box-shadow .12s; height:62px;
+}
+#ttNoteInput:focus { border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-ring); }
+.tt-edit-btns { display:flex; gap:6px; margin-top:6px; justify-content:flex-end; }
+.tt-btn {
+  height:28px; padding:0 11px; border-radius:var(--r-s);
+  border:1px solid var(--border-hi); background:var(--surface);
+  color:var(--text); font-size:12px; font-weight:500;
+  transition:background .12s;
+}
+.tt-btn:hover { background:var(--surface-2); }
+.tt-btn.pri { background:var(--accent); border-color:var(--accent); color:var(--on-accent); font-weight:600; }
+.tt-btn.pri:hover { background:var(--accent-hi); border-color:var(--accent-hi); }
+
+.tt-time { margin-top:8px; }
+.tt-time label { display:block; color:var(--text-3); font-size:12px; margin-bottom:4px; }
+#ttTimeIn { width:100%; min-width:0; padding:5px 8px; }
+
+/* ── DISTANCE BADGE ─────────────────────────────────────── */
+.dist-badge {
+  position:absolute; padding:2px 7px;
+  background:rgba(22,24,28,.94); border:1px solid var(--border-hi); border-radius:5px;
+  color:var(--text); font-family:var(--mono); font-size:11px; font-weight:500;
+  white-space:nowrap; transform:translate(-50%,-50%); pointer-events:none;
+  box-shadow:var(--shadow-s);
+}
+
+/* ── CROSSHAIR ──────────────────────────────────────────── */
+#crosshair {
+  position:absolute;
+  top:50%;
+  left:50%;
+  width:34px;
+  height:34px;
+  transform:translate(-50%,-50%) rotate(45deg);
+  pointer-events:none;
+  z-index:300;
+  display:none;
+  /*color:var(--accent);*/
+  color:rgb(204, 202, 202);
+  filter:drop-shadow(0 0 2px #000);
+}
+
+#crosshair .icon {
+  display:block;
+  width:100%;
+  height:100%;
+}
+
+/* ── TOAST ──────────────────────────────────────────────── */
+#toast {
+  position:absolute; left:50%; bottom:calc(20px + var(--safe-b));
+  transform:translate(-50%, 6px);
+  padding:9px 16px; background:var(--surface-2); border:1px solid var(--border-hi);
+  border-radius:var(--r-m); color:var(--text); font-size:13px;
+  box-shadow:var(--shadow-m); opacity:0; pointer-events:none;
+  z-index:1000; transition:opacity .16s, transform .16s;
+}
+#toast.show { opacity:1; transform:translate(-50%,0); }
+#app.tl-on #toast { bottom:calc(126px + var(--tl-extra,0px) + var(--safe-b)); }
+
+/* ── LOADING ────────────────────────────────────────────── */
+#emptyOvr {
+  position:absolute; inset:0; display:grid; place-items:center;
+  z-index:50; background:var(--bg);
+}
+.empty-card { text-align:center; color:var(--text-3); }
+.empty-card h2 { font-size:15px; font-weight:600; color:var(--text); margin-bottom:4px; }
+.empty-card p  { font-size:13px; }
+.empty-card strong { font-weight:500; color:var(--text-2); }
+
+.hidden { display:none !important; }
+
+/* ── MOBILE ─────────────────────────────────────────────── */
+@media (hover:none) and (pointer:coarse),(max-width:768px) {
+  :root { --pad:12px; }
+  #crosshair { display:block; }
+  #tbAddBtn, #tbTgtBtn { display:flex; }
+  #toolbar   { top:auto; bottom:calc(var(--pad) + var(--safe-b)); }
+  .tb-btn    { width:44px; height:44px; }
+  #tbAddBtn  { background:var(--accent); color:var(--on-accent); }
+  #tbAddBtn:hover { background:var(--accent-hi); color:var(--on-accent); }
+  #tbTgtBtn  { background:var(--danger); color:var(--on-accent); }
+  #tbTgtBtn:hover { background:#ff8294; color:var(--on-accent); }
+  #coordsPanel { gap:10px; padding:0 10px; font-size:11px; }
+  #zoomChip  { padding:0 10px; }
+  #connDot   { margin-right:10px; }
+  .dlg-card  { width:calc(100vw - 28px); }
+  .sym-sub   { left:0; top:calc(100% + 4px); width:100%; }
+  #markerTT  { max-width:calc(100vw - 24px); }
+  #toast     { bottom:calc(var(--pad) + var(--safe-b) + 4px); }
+  #app.tl-on #toast { bottom:calc(var(--pad) + var(--safe-b) + 150px + var(--tl-extra,0px)); }
+  #timeBar   { left:var(--pad); right:calc(var(--pad)*2 + 44px); width:auto; transform:none; flex-wrap:wrap; }
+  .tl-mid    { flex-wrap:wrap; gap:6px; }
+  .tl-dates  { flex:1 1 100%; min-width:0; gap:4px; }
+  .tl-date   { flex:1 1 0; min-width:0; }
+  #tlFrom, #tlTo, #tlDay { width:100%; font-size:10.5px; padding:0 4px; }
+  .tl-dpick  { display:none; }
+  .tl-chips  { flex:1 1 100%; justify-content:space-between; }
+  .tl-chip   { flex:1; padding:0; }
+  .tl-sep    { display:none; }
+  .tt-note-hdr .edit-hint { opacity:1; }
+}
+
+@media (prefers-reduced-motion:reduce) {
+  *,*::before,*::after { transition-duration:.01ms !important; animation:none !important; }
+}
+</style>
+</head>
+<body oncontextmenu="return false;">
+<div id="app">
+
+  <div id="map">
+    <canvas id="canvas"></canvas>
+    <svg id="linesSvg" class="lines-layer">
+      <g id="tgtLines"></g>
+      <g id="pinLines"></g>
+    </svg>
+    <div id="overlayLabels"></div>
+    <div id="markerLayer"></div>
+
+    <!-- Mobile crosshair -->
+    <div id="crosshair">
+      <span class="icon"
+        style="-webkit-mask-image:url('assets/svg/crosshair.svg');mask-image:url('assets/svg/crosshair.svg');">
+      </span>
+    </div>
+
+    <!-- Loading -->
+    <div id="emptyOvr">
+      <div class="empty-card">
+        <div style="width:36px;height:36px;margin:0 auto 14px;color:var(--accent);">
+          <span class="icon" style="display:block;width:36px;height:36px;
+            -webkit-mask-image:url('assets/svg/location_pin2.svg');
+            mask-image:url('assets/svg/location_pin2.svg');"></span>
+        </div>
+        <h2>Tactical Map</h2>
+        <p id="emptyMsg">Loading <strong>map.osm</strong>…</p>
+      </div>
+    </div>
+
+    <!-- Context menu -->
+    <div id="ctxMenu" class="ctx-menu hidden">
+      <button id="ctxTgt" class="ctx-item" type="button">
+        <span class="ctx-icon">
+          <span class="icon" style="-webkit-mask-image:url('assets/svg/target.svg');mask-image:url('assets/svg/target.svg');display:block;width:16px;height:16px;"></span>
+        </span>Set target
+      </button>
+      <button id="ctxPin" class="ctx-item" type="button">
+        <span class="ctx-icon">
+          <span class="icon" style="-webkit-mask-image:url('assets/svg/location_pin.svg');mask-image:url('assets/svg/location_pin.svg');display:block;width:16px;height:16px;"></span>
+        </span>Drop pin
+      </button>
+      <div class="ctx-sep"></div>
+      <div class="sym-wrap">
+        <button class="ctx-item" type="button" style="width:100%;">
+          <span class="ctx-icon">
+            <span class="icon" style="-webkit-mask-image:url('assets/svg/plus.svg');mask-image:url('assets/svg/plus.svg');display:block;width:16px;height:16px;"></span>
+          </span>
+          Add symbol
+          <span style="margin-left:auto;color:var(--text-3);">
+            <span class="icon" style="-webkit-mask-image:url('assets/svg/chevron-right.svg');mask-image:url('assets/svg/chevron-right.svg');display:inline-block;width:10px;height:10px;"></span>
+          </span>
+        </button>
+        <div class="sym-sub" id="symSub">
+          <div class="sym-aff"><span id="symAffLbl">Hostile</span><button id="symAffSw" class="sw" type="button" role="switch" aria-checked="false" aria-label="Friendly"></button></div>
+          <button class="sym-opt" data-symbol="infantry"  type="button"><span style="color:var(--sym-c);" class="ctx-icon"><span class="icon" style="-webkit-mask-image:url('assets/svg/infantry.svg');mask-image:url('assets/svg/infantry.svg');display:block;width:16px;height:16px;"></span></span>Infantry</button>
+          <button class="sym-opt" data-symbol="tank"      type="button"><span style="color:var(--sym-c);" class="ctx-icon"><span class="icon" style="-webkit-mask-image:url('assets/svg/tank.svg');mask-image:url('assets/svg/tank.svg');display:block;width:16px;height:16px;"></span></span>Tank</button>
+          <button class="sym-opt" data-symbol="artillery" type="button"><span style="color:var(--sym-c);" class="ctx-icon"><span class="icon" style="-webkit-mask-image:url('assets/svg/artillery.svg');mask-image:url('assets/svg/artillery.svg');display:block;width:16px;height:16px;"></span></span>Artillery</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tooltip with inline note editor -->
+    <div id="markerTT">
+      <div id="ttTitle" class="tt-title"></div>
+      <div class="tt-row"><span>Lat</span><span id="ttLat" class="tt-val"></span></div>
+      <div class="tt-row"><span>Lon</span><span id="ttLon" class="tt-val"></span></div>
+      <div class="tt-time">
+        <label for="ttTimeIn">Time</label>
+        <input id="ttTimeIn" type="datetime-local">
+      </div>
+      <div class="tt-aff hidden" id="ttAff">
+        <span id="ttAffLbl">Hostile</span>
+        <button id="ttAffSw" class="sw" type="button" role="switch" aria-checked="false" aria-label="Friendly"></button>
+      </div>
+      <div class="tt-note-sec">
+        <div class="tt-note-hdr">
+          <span>Note</span>
+          <span class="edit-hint" id="ttEditHint">Edit</span>
+        </div>
+        <div id="ttNoteText" class="tt-note-text"></div>
+        <div id="ttNoteEdit">
+          <textarea id="ttNoteInput" placeholder="Add a note"></textarea>
+          <div class="tt-edit-btns">
+            <button class="tt-btn" id="ttNoteCancel">Cancel</button>
+            <button class="tt-btn pri" id="ttNoteSave">Save note</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /map -->
+
+  <!-- Readout -->
+  <div id="hudInfo" class="hud">
+    <div id="coordsPanel">
+      <div class="cp"><span class="cl">Lat</span><span id="lat" class="cv">—</span></div>
+      <div class="cp"><span class="cl">Lon</span><span id="lon" class="cv">—</span></div>
+    </div>
+    <div id="zoomChip"><b id="zoomLevel">1.0×</b></div>
+    <div id="connDot" title="Server connection"></div>
+  </div>
+
+  <!-- Tools -->
+  <div id="toolbar" class="hud">
+    <button id="tbTgtBtn" class="tb-btn" title="Set target at centre" aria-label="Set target at centre">
+      <span class="tb-icon icon"
+        style="-webkit-mask-image:url('assets/svg/target.svg');mask-image:url('assets/svg/target.svg');"></span>
+    </button>
+    <button id="tbAddBtn" class="tb-btn accent" title="Add pin at centre" aria-label="Add pin at centre">
+      <span class="tb-icon icon"
+        style="-webkit-mask-image:url('assets/svg/location_pin.svg');mask-image:url('assets/svg/location_pin.svg');"></span>
+    </button>
+    <button id="tbZoomIn" class="tb-btn" title="Zoom in" aria-label="Zoom in">
+      <span class="tb-icon icon"
+        style="-webkit-mask-image:url('assets/svg/plus.svg');mask-image:url('assets/svg/plus.svg');"></span>
+    </button>
+    <button id="tbZoomOut" class="tb-btn" title="Zoom out" aria-label="Zoom out">
+      <span class="tb-icon icon"
+        style="-webkit-mask-image:url('assets/svg/minus.svg');mask-image:url('assets/svg/minus.svg');"></span>
+    </button>
+    <button id="tbFitBtn" class="tb-btn" title="Fit map" aria-label="Fit map">
+      <span class="tb-icon icon"
+        style="-webkit-mask-image:url('assets/svg/expand.svg');mask-image:url('assets/svg/expand.svg');"></span>
+    </button>
+    <button id="tbTimeBtn" class="tb-btn" title="Timeline mode" aria-label="Timeline mode" aria-pressed="false">
+      <span class="tb-icon icon"
+        style="-webkit-mask-image:url('assets/svg/time.svg');mask-image:url('assets/svg/time.svg');"></span>
+    </button>
+    <button id="tbClearBtn" class="tb-btn danger" title="Clear all" aria-label="Clear all">
+      <span class="tb-icon icon"
+        style="-webkit-mask-image:url('assets/svg/trash.svg');mask-image:url('assets/svg/trash.svg');"></span>
+    </button>
+  </div>
+
+  <!-- Timeline -->
+  <div id="timeBar" class="hud hidden" role="group" aria-label="Timeline">
+    <div class="tl-track" title="Slide the window. Long empty stretches are squeezed">
+      <div id="tlIcons"></div>
+      <div class="tl-rail">
+        <div id="tlTicks"></div>
+        <input id="tlRange" type="range" step="1000" aria-label="Slide the window along the timeline">
+      </div>
+    </div>
+    <button id="tlPrev" class="tl-step" type="button" title="Previous symbol" aria-label="Previous symbol">
+      <span class="icon" style="-webkit-mask-image:url('assets/svg/chevron-left.svg');mask-image:url('assets/svg/chevron-left.svg');"></span>
+    </button>
+    <div class="tl-mid">
+    <div class="tl-dates" id="tlDates">
+      <div class="tl-date tl-rng">
+        <input id="tlFrom" type="datetime-local" aria-label="From (lower limit)" title="From">
+        <button class="tl-dpick" type="button" data-for="tlFrom" tabindex="-1" aria-label="Pick From date"><span class="icon" style="-webkit-mask-image:url('assets/svg/calender.svg');mask-image:url('assets/svg/calender.svg');"></span></button>
+      </div>
+      <span class="tl-sep tl-rng">to</span>
+      <div class="tl-date tl-rng">
+        <input id="tlTo" type="datetime-local" aria-label="To (upper limit)" title="To">
+        <button class="tl-dpick" type="button" data-for="tlTo" tabindex="-1" aria-label="Pick To date"><span class="icon" style="-webkit-mask-image:url('assets/svg/calender.svg');mask-image:url('assets/svg/calender.svg');"></span></button>
+      </div>
+      <div class="tl-date tl-dayw">
+        <input id="tlDay" type="date" aria-label="Day" title="Day">
+        <button class="tl-dpick" type="button" data-for="tlDay" tabindex="-1" aria-label="Pick day"><span class="icon" style="-webkit-mask-image:url('assets/svg/calender.svg');mask-image:url('assets/svg/calender.svg');"></span></button>
+      </div>
+    </div>
+    <div class="tl-chips" id="tlChips">
+      <button class="tl-chip" type="button" data-dur="300000">5m</button>
+      <button class="tl-chip" type="button" data-dur="1800000">30m</button>
+      <button class="tl-chip" type="button" data-dur="3600000">1h</button>
+      <button class="tl-chip" type="button" data-dur="21600000">6h</button>
+      <button class="tl-chip" type="button" data-dur="86400000">1d</button>
+    </div>
+    </div>
+    <button id="tlNext" class="tl-step" type="button" title="Next symbol" aria-label="Next symbol">
+      <span class="icon" style="-webkit-mask-image:url('assets/svg/chevron-right.svg');mask-image:url('assets/svg/chevron-right.svg');"></span>
+    </button>
+  </div>
+
+  <!-- Drop pin dialog -->
+  <div id="pinDlg" class="dlg-bd">
+    <div class="dlg-card">
+      <h3>Drop pin</h3>
+      <p class="dlg-sub">Name this location and add an optional note.</p>
+      <input id="pinNameIn" type="text" placeholder="Name (e.g. Checkpoint Alpha)" maxlength="80" autocomplete="off">
+      <textarea id="pinNoteIn" placeholder="Note (optional)"></textarea>
+      <label class="dlg-lbl" for="pinTimeIn">Time</label>
+      <input id="pinTimeIn" type="datetime-local">
+      <div class="tt-aff">
+        <span id="pinAffLbl">Hostile</span>
+        <button id="pinAffSw" class="sw" type="button" role="switch" aria-checked="false" aria-label="Friendly"></button>
+      </div>
+      <div class="dlg-acts">
+        <button id="pinCancel" class="dlg-btn">Cancel</button>
+        <button id="pinConfirm" class="dlg-btn pri">Save pin</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+</div><!-- /app -->
+
+<script>
+"use strict";
+/* ════════════════════════════════════════════════════════
+   CONFIG
+════════════════════════════════════════════════════════ */
+const CROP = { north:29.135267, south:29.098618, west:75.797366, east:75.862087 };
+const DEFAULT_ZOOM_MOBILE = 5, DEFAULT_ZOOM_DESKTOP = 1.2;
+const MIN_ZOOM = 1140000, MAX_ZOOM = 100000000, WHEEL_STEP = 0.2;
+const DATA_EP = "/api/data";
+/* Pan margin: fraction of screen allowed beyond map edge */
+const PAN_MARGIN = 0.45;
+/* Hover/hold delays */
+const HOVER_DELAY = 1000, LONGPRESS_DELAY = 500;
+/* Double-tap */
+const DT_MS = 300, DT_PX = 30;
+
+const C_ACC = "#7c9bff", C_DNG = "#ff6178";
+const SYM_SVG   = { infantry:"infantry.svg", tank:"tank.svg", artillery:"artillery.svg" };
+/* Pins and symbols are red (hostile) unless switched to friendly (blue) */
+const C_HOSTILE = "#ff6178", C_FRIEND = "#5ea8ff";
+const symColor  = s => s.friendly ? C_FRIEND : C_HOSTILE;
+const isAff     = it => appData.symbols.includes(it) || appData.pins.includes(it);   /* pins + symbols carry an affiliation */
+const itemColor = it => isAff(it) ? symColor(it) : it.color;
+let nextFriendly = false;      /* affiliation given to newly placed symbols */
+let nextPinFriendly = false;   /* affiliation preselected in the Drop-pin dialog */
+function paintAff(sw,lbl,on) {
+  sw.setAttribute("aria-checked",on); lbl.textContent=on?"Friendly":"Hostile"; lbl.style.color=on?C_FRIEND:C_HOSTILE;
+}
+
+/* ════════════════════════════════════════════════════════
+   DOM REFS
+════════════════════════════════════════════════════════ */
+const canvas     = document.getElementById("canvas");
+const ctx        = canvas.getContext("2d");
+const mapEl      = document.getElementById("map");
+const emptyOvr   = document.getElementById("emptyOvr");
+const emptyMsg   = document.getElementById("emptyMsg");
+const latEl      = document.getElementById("lat");
+const lonEl      = document.getElementById("lon");
+const zoomEl     = document.getElementById("zoomLevel");
+const connDot    = document.getElementById("connDot");
+const ctxMenu    = document.getElementById("ctxMenu");
+const ctxTgt     = document.getElementById("ctxTgt");
+const ctxPin_btn = document.getElementById("ctxPin");
+const mkLayer    = document.getElementById("markerLayer");
+const ovlLbls    = document.getElementById("overlayLabels");
+const tgtLns     = document.getElementById("tgtLines");
+const pinLns     = document.getElementById("pinLines");
+const markerTT   = document.getElementById("markerTT");
+const ttTitle    = document.getElementById("ttTitle");
+const ttLat      = document.getElementById("ttLat");
+const ttLon      = document.getElementById("ttLon");
+const ttNoteText = document.getElementById("ttNoteText");
+const ttNoteEdit = document.getElementById("ttNoteEdit");
+const ttNoteIn   = document.getElementById("ttNoteInput");
+const ttNoteSave = document.getElementById("ttNoteSave");
+const ttNoteCanc = document.getElementById("ttNoteCancel");
+const ttEditHint = document.getElementById("ttEditHint");
+const ttAff      = document.getElementById("ttAff");
+const ttAffLbl   = document.getElementById("ttAffLbl");
+const ttAffSw    = document.getElementById("ttAffSw");
+const pinDlg     = document.getElementById("pinDlg");
+const pinNameIn  = document.getElementById("pinNameIn");
+const pinNoteIn  = document.getElementById("pinNoteIn");
+const pinCancel  = document.getElementById("pinCancel");
+const pinConfirm = document.getElementById("pinConfirm");
+const toastEl    = document.getElementById("toast");
+const pinTimeIn  = document.getElementById("pinTimeIn");
+const ttTimeIn   = document.getElementById("ttTimeIn");
+const tlBar      = document.getElementById("timeBar");
+const appEl      = document.getElementById("app");
+const tbTime     = document.getElementById("tbTimeBtn");
+const tlPrev     = document.getElementById("tlPrev");
+const tlNext     = document.getElementById("tlNext");
+const tlRange    = document.getElementById("tlRange");
+const tlFrom     = document.getElementById("tlFrom");
+const tlTo       = document.getElementById("tlTo");
+const tlChips    = document.getElementById("tlChips");
+const tlTicks    = document.getElementById("tlTicks");
+const tlIcons    = document.getElementById("tlIcons");
+const tlDates    = document.getElementById("tlDates");
+const tlDay      = document.getElementById("tlDay");
+
+/* ════════════════════════════════════════════════════════
+   STATE
+════════════════════════════════════════════════════════ */
+let nodes = new Map(), ways = [], bounds = null;
+let appData = { targets:[], pins:[], symbols:[] };
+let activeTgtId = null, selIds = [], ctxLoc = null,
+    pendingPin = null, paletteIdx = 0;
+
+let baseMul = 1;
+let view = { x:0, y:0, scale:1, zoom:MIN_ZOOM, fitScale:1 };
+let dragging = false, dragStart = {x:0,y:0}, origView = {x:0,y:0},
+    ptrDown = {x:0,y:0}, mouse = {x:0,y:0};
+const activePtrs = new Map();
+let pinchD0 = 0, pinchZ0 = MIN_ZOOM, pinchC0 = {x:0,y:0}, pinchW0 = {x:0,y:0};
+
+let lastTapTime = 0, lastTapPos = {x:0,y:0};
+
+/* Tooltip state */
+let ttItemId = null, ttEditing = false, ttHideTimer = null;
+/* Hover / long-press */
+let hoverTimer = null, lpTimer = null, lpFired = false;
+/* Marker DOM pool: id → element */
+const mkPool = new Map();
+/* Server health */
+let serverOk = true, refreshBackoff = 3000;
+let saveTimer = null, editId = null;
+/* Timeline mode: win = null means off (everything not removed is shown as normal),
+   otherwise a window {from,to} in ms and only items whose time is inside it are shown */
+let win = null, winDur = 30*60000, tlDrag = false, pinTimeTouched = false;
+
+/* ════════════════════════════════════════════════════════
+   HELPERS
+════════════════════════════════════════════════════════ */
+let mobileCache = null;
+const isMobile = () => mobileCache ??= (
+  window.matchMedia("(hover:none) and (pointer:coarse)").matches ||
+  window.innerWidth <= 768);
+window.addEventListener("resize", () => { mobileCache = null; });
+const mapCtr  = () => ({ x:mapEl.clientWidth/2, y:mapEl.clientHeight/2 });
+const cursor  = () => isMobile() ? mapCtr() : mouse;
+
+function project(lon, lat) {
+  const c = Math.max(-85.05112878, Math.min(85.05112878, lat));
+  return { x:lon*Math.PI/180, y:Math.log(Math.tan(Math.PI/4+(c*Math.PI/180)/2)) };
+}
+function unproject(x, y) {
+  return { lon:x*180/Math.PI, lat:(2*Math.atan(Math.exp(y))-Math.PI/2)*180/Math.PI };
+}
+function w2s(p) { return {x:p.x*view.scale+view.x, y:p.y*-view.scale+view.y}; }
+function s2w(x,y) { return {x:(x-view.x)/view.scale, y:-(y-view.y)/view.scale}; }
+function geo2s(lat,lon) { return w2s(project(lon,lat)); }
+function s2geo(x,y) { const w=s2w(x,y); return unproject(w.x,w.y); }
+
+const uid   = () => Date.now().toString(36)+"-"+Math.random().toString(36).slice(2,7);
+const cap   = s => s?s[0].toUpperCase()+s.slice(1):"";
+const esc   = v => String(v).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+const hav   = (la1,lo1,la2,lo2) => {
+  const R=6371000,p1=la1*Math.PI/180,p2=la2*Math.PI/180,
+        dp=(la2-la1)*Math.PI/180,dl=(lo2-lo1)*Math.PI/180,
+        a=Math.sin(dp/2)**2+Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)**2;
+  return 2*R*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+};
+const fmtD  = m => m>1000?(m/1000).toFixed(2)+" km":Math.round(m)+" m";
+const inBnd = g => g.lat>=CROP.south&&g.lat<=CROP.north&&g.lon>=CROP.west&&g.lon<=CROP.east;
+const onUI  = el => el.closest("#ctxMenu,.hud,.dlg-bd,.marker,.tgt-mk,#markerTT");
+
+function iconSpan(file, sz=16, color="currentColor") {
+  return `<span class="icon" style="display:block;width:${sz}px;height:${sz}px;color:${color};`
+       + `-webkit-mask-image:url('assets/svg/${file}');mask-image:url('assets/svg/${file}');"></span>`;
+}
+
+function findItem(id) {
+  return appData.pins.find(p=>p.id===id) ||
+         appData.symbols.find(s=>s.id===id) ||
+         appData.targets.find(t=>t.id===id);
+}
+
+/* ════════════════════════════════════════════════════════
+   TIME HELPERS
+   Every pin / symbol / target has a `time` (ISO, editable). Removed items are kept
+   (with a `removedAt` stamp) so they can still appear in past timeline windows.
+════════════════════════════════════════════════════════ */
+const isLive    = () => win === null;
+const allItems  = () => [...appData.targets, ...appData.pins, ...appData.symbols];
+const liveTgts  = () => appData.targets.filter(t=>!t.removedAt);
+const itemMs    = it => { const t=Date.parse(it.time||it.createdAt); return Number.isFinite(t)?t:0; };
+const removeItem = it => { if(!it.removedAt) it.removedAt=new Date().toISOString(); };
+/* Live: everything not removed. Window: items whose time is within [from, to]. */
+function visibleAt(it) {
+  if (isLive() || appData.targets.includes(it)) return !it.removedAt;   /* targets are session-only: not time-filtered */
+  const t=itemMs(it);
+  return t>=win.from && t<=win.to;
+}
+function toLocalInput(ms) {
+  const d=new Date(ms), p=n=>String(n).padStart(2,"0");
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+function needLive() {
+  if (isLive()) return false;
+  showToast("Timeline mode is on — turn it off to make changes");
+  return true;
+}
+
+/* ════════════════════════════════════════════════════════
+   SERVER STATUS
+════════════════════════════════════════════════════════ */
+function setServerStatus(ok) {
+  if (ok === serverOk) return;
+  serverOk = ok;
+  connDot.classList.toggle("offline", !ok);
+  connDot.title = ok ? "Server: connected" : "Server: offline";
+}
+
+/* ════════════════════════════════════════════════════════
+   CANVAS / RESIZE
+════════════════════════════════════════════════════════ */
+function resizeCanvas() {
+  const dpr = Math.min(window.devicePixelRatio||1, 2);
+  canvas.width  = mapEl.clientWidth  * dpr;
+  canvas.height = mapEl.clientHeight * dpr;
+  canvas.style.width  = mapEl.clientWidth  + "px";
+  canvas.style.height = mapEl.clientHeight + "px";
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  draw(); positionMarkers();
+}
+window.addEventListener("resize", resizeCanvas);
+
+/* ════════════════════════════════════════════════════════
+   MAP PARSING
+════════════════════════════════════════════════════════ */
+async function loadMap() {
+  try {
+    const r = await fetch("assets/map.osm",{cache:"no-store"});
+    if (!r.ok) throw new Error();
+    parseOSM(await r.text());
+    emptyOvr.classList.add("hidden");
+    fitMap();
+    await loadData();
+    buildMarkers();
+    startAutoRefresh();
+  } catch {
+    emptyMsg.textContent = "Couldn't load map.osm. Check that assets/map.osm exists.";
+  }
+}
+
+function parseOSM(text) {
+  const xml = new DOMParser().parseFromString(text,"application/xml");
+  nodes.clear(); ways = [];
+  for (const el of xml.getElementsByTagName("node")) {
+    const lat=+el.getAttribute("lat"), lon=+el.getAttribute("lon");
+    if (lat>=CROP.south&&lat<=CROP.north&&lon>=CROP.west&&lon<=CROP.east)
+      nodes.set(el.getAttribute("id"),{lat,lon,...project(lon,lat)});
+  }
+  for (const el of xml.getElementsByTagName("way")) {
+    const refs=[];
+    for (const nd of el.children)
+      if (nd.tagName==="nd"&&nodes.has(nd.getAttribute("ref"))) refs.push(nd.getAttribute("ref"));
+    if (refs.length<2) continue;
+    const tags={};
+    for (const t of el.children)
+      if (t.tagName==="tag") tags[t.getAttribute("k")]=t.getAttribute("v");
+    const ns=refs.map(r=>nodes.get(r));
+    let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;
+    for (const n of ns) {
+      if (n.x<minX) minX=n.x; if (n.x>maxX) maxX=n.x;
+      if (n.y<minY) minY=n.y; if (n.y>maxY) maxY=n.y;
+    }
+    ways.push({refs,ns,tags,minX,maxX,minY,maxY});
+  }
+  ways.sort((a,b)=>layerP(a.tags)-layerP(b.tags));
+  calcBounds();
+}
+
+function layerP(t) {
+  if (t.highway) {
+    if (t.highway==="motorway"||t.highway==="trunk") return 5;
+    if (t.highway==="primary"||t.highway==="secondary") return 4;
+    if (t.highway==="tertiary") return 3;
+    return 2;
+  }
+  if (t.building) return 1;
+  return 0;
+}
+
+function calcBounds() {
+  const sw=project(CROP.west,CROP.south), ne=project(CROP.east,CROP.north);
+  bounds={minX:sw.x,maxX:ne.x,minY:sw.y,maxY:ne.y};
+}
+
+/* ════════════════════════════════════════════════════════
+   VIEW / CLAMP / ZOOM
+════════════════════════════════════════════════════════ */
+function clampView() {
+  if (!bounds) return;
+  const W=mapEl.clientWidth, H=mapEl.clientHeight;
+  const mx=W*PAN_MARGIN, my=H*PAN_MARGIN;
+  const minXS=w2s({x:bounds.minX,y:bounds.minY}).x;
+  const maxXS=w2s({x:bounds.maxX,y:bounds.minY}).x;
+  const minYS=w2s({x:bounds.minX,y:bounds.maxY}).y;
+  const maxYS=w2s({x:bounds.minX,y:bounds.minY}).y;
+  const wW=maxXS-minXS, wH=maxYS-minYS;
+  if (wW<=W) view.x=W/2-((bounds.minX+bounds.maxX)/2)*view.scale;
+  else {
+    if (minXS>mx) view.x-=(minXS-mx);
+    else if (maxXS<W-mx) view.x+=(W-mx-maxXS);
+  }
+  if (wH<=H) view.y=H/2+((bounds.minY+bounds.maxY)/2)*view.scale;
+  else {
+    if (minYS>my) view.y-=(minYS-my);
+    else if (maxYS<H-my) view.y+=(H-my-maxYS);
+  }
+}
+
+function fitMap() {
+  if (!bounds) return;
+  const pad=72, wW=bounds.maxX-bounds.minX, wH=bounds.maxY-bounds.minY;
+  if (wW<=0||wH<=0) return;
+  view.fitScale=Math.min((mapEl.clientWidth-pad*2)/wW,(mapEl.clientHeight-pad*2)/wH);
+  /* Default view is zoomed in past "whole map": 5× on mobile, 1.2× on PC. That level is shown as 1×. */
+  baseMul=isMobile()?DEFAULT_ZOOM_MOBILE:DEFAULT_ZOOM_DESKTOP;
+  view.zoom=MIN_ZOOM*baseMul; view.scale=view.fitScale*baseMul;
+  view.x=mapEl.clientWidth/2-((bounds.minX+bounds.maxX)/2)*view.scale;
+  view.y=mapEl.clientHeight/2+((bounds.minY+bounds.maxY)/2)*view.scale;
+  clampView(); redraw();
+}
+
+function zoomAt(sx,sy,f) {
+  if (!ways.length||!view.fitScale) return;
+  const b=s2w(sx,sy);
+  view.zoom=Math.max(MIN_ZOOM,Math.min(MAX_ZOOM,view.zoom*f));
+  view.scale=view.fitScale*(view.zoom/MIN_ZOOM);
+  view.x=sx-b.x*view.scale; view.y=sy+b.y*view.scale;
+  clampView(); redraw();
+}
+
+/* All view-driven updates are batched to one run per animation frame */
+let rafId=0, rafFull=false;
+function requestFrame(full) {
+  if (full) rafFull=true;
+  if (rafId) return;
+  rafId=requestAnimationFrame(()=>{
+    rafId=0; const f=rafFull; rafFull=false;
+    if (f) {
+      zoomEl.textContent=(view.zoom/MIN_ZOOM/baseMul).toFixed(1)+"×";
+      draw(); positionMarkers(); rebuildLines();
+    }
+    updateTgtLine(); updateCoords(); syncTTPos();
+  });
+}
+function redraw() { requestFrame(true); }
+
+/* Fixed zoom step (0.2× on the displayed number) — used by wheel and +/- buttons */
+function stepZoomAt(sx,sy,dir) {
+  const d=view.zoom/MIN_ZOOM/baseMul, nd=Math.max(0.01,d+dir*WHEEL_STEP);
+  zoomAt(sx,sy,nd/d);
+}
+
+/* ════════════════════════════════════════════════════════
+   CANVAS DRAW — light cartographic palette
+════════════════════════════════════════════════════════ */
+/* Line widths are in screen px, but the map is fitted to the screen, so on a small
+   screen the same px widths look much fatter. Scale them by how big the fitted map is
+   compared with a desktop-sized one (REF_MAP_PX), so phone and PC look alike. */
+const REF_MAP_PX = 1400, MIN_LW = 0.35;
+function lineK() {
+  if (!bounds || !view.fitScale) return 1;
+  const fitted = (bounds.maxX-bounds.minX)*view.fitScale;
+  return Math.max(0.25, Math.min(1, fitted/REF_MAP_PX));
+}
+function styleForWay(way) {
+  const s = styleForWayRaw(way);
+  if (!s) return s;
+  const k = lineK();
+  s.width = Math.max(MIN_LW, s.width*k);
+  s.ce = 2*k;
+  return s;
+}
+function styleForWayRaw(way) {
+  const t = way.tags;
+  /* Skip water features entirely */
+  if (t.natural==="water"||t.water||t.waterway) return null;
+  /* Land polygons */
+  if (t.building)
+    return {fill:"#1b1e23", stroke:"#2a2e35", width:0.8, closed:true};
+  if (t.landuse||t.natural==="wood"||t.leisure)
+    return {fill:"#13161a", stroke:"#1a1d22", width:0.5, closed:true};
+  /* Roads: light line over a dark casing */
+  if (t.highway) {
+    const zf = Math.min(10, Math.max(1, view.zoom/MIN_ZOOM));
+    const h = t.highway;
+    if (h==="motorway"||h==="trunk")
+      return {stroke:"#b8945a", width:4*zf, casing:"#07080a"};
+    if (h==="primary"||h==="secondary")
+      return {stroke:"#6b7385", width:3*zf, casing:"#07080a"};
+    if (h==="tertiary")
+      return {stroke:"#4d5463", width:2*zf, casing:"#0a0b0d"};
+    if (h==="residential"||h==="service")
+      return {stroke:"#3a404c", width:1.2*zf, casing:"#0b0c0f"};
+    return {stroke:"#2a2e36", width:0.9*zf};
+  }
+  return {stroke:"#20242a", width:0.5};
+}
+
+function tracePath(ns, closed, sc, vx, vy) {
+  ctx.beginPath(); ctx.moveTo(ns[0].x*sc+vx, vy-ns[0].y*sc);
+  for (let i=1;i<ns.length;i++) ctx.lineTo(ns[i].x*sc+vx, vy-ns[i].y*sc);
+  if (closed) ctx.closePath();
+}
+
+function draw() {
+  const W=mapEl.clientWidth, H=mapEl.clientHeight;
+  ctx.clearRect(0,0,W,H);
+  if (!ways.length) return;
+  ctx.lineCap="round"; ctx.lineJoin="round";
+  const sc=view.scale, vx=view.x, vy=view.y;
+  /* Visible world rect (with margin) — ways outside it are skipped */
+  const m=40/sc;
+  const wMinX=(0-vx)/sc-m, wMaxX=(W-vx)/sc+m;
+  const wMinY=-(H-vy)/sc-m, wMaxY=-(0-vy)/sc+m;
+  const items=[];
+  for (const way of ways) {
+    if (way.maxX<wMinX||way.minX>wMaxX||way.maxY<wMinY||way.minY>wMaxY) continue;
+    const s=styleForWay(way); if (!s) continue;
+    items.push({s,ns:way.ns});
+  }
+  /* Pass 1: polygons and road casings, so crossings read cleanly */
+  for (const {s,ns} of items) {
+    if (s.closed) {
+      tracePath(ns,true,sc,vx,vy);
+      ctx.fillStyle=s.fill; ctx.fill();
+      ctx.strokeStyle=s.stroke; ctx.lineWidth=s.width; ctx.stroke();
+    } else if (s.casing) {
+      tracePath(ns,false,sc,vx,vy);
+      ctx.strokeStyle=s.casing; ctx.lineWidth=s.width+s.ce; ctx.stroke();
+    }
+  }
+  /* Pass 2: road centres */
+  for (const {s,ns} of items) {
+    if (s.closed) continue;
+    tracePath(ns,false,sc,vx,vy);
+    ctx.strokeStyle=s.stroke; ctx.lineWidth=s.width; ctx.stroke();
+  }
+}
+
+/* ════════════════════════════════════════════════════════
+   POINTER EVENTS
+════════════════════════════════════════════════════════ */
+mapEl.addEventListener("wheel", e => {
+  e.preventDefault();
+  const r=mapEl.getBoundingClientRect();
+  /* Each wheel notch changes the displayed zoom by exactly 0.2× */
+  stepZoomAt(e.clientX-r.left,e.clientY-r.top,e.deltaY<0?1:-1);
+},{passive:false});
+
+mapEl.addEventListener("pointerdown", e => {
+  if (e.button!==0&&e.pointerType==="mouse") return;
+  if (onUI(e.target)) return;
+  activePtrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  try{mapEl.setPointerCapture(e.pointerId);}catch{}
+  if (activePtrs.size===1) {
+    dragging=true; ptrDown=dragStart={x:e.clientX,y:e.clientY};
+    origView={x:view.x,y:view.y}; mapEl.classList.add("dragging");
+  } else if (activePtrs.size===2) {
+    dragging=false;
+    const pts=Array.from(activePtrs.values()), r=mapEl.getBoundingClientRect();
+    pinchD0=Math.hypot(pts[1].x-pts[0].x,pts[1].y-pts[0].y);
+    pinchC0={x:(pts[0].x+pts[1].x)/2-r.left,y:(pts[0].y+pts[1].y)/2-r.top};
+    pinchW0=s2w(pinchC0.x,pinchC0.y); pinchZ0=view.zoom;
+  }
+});
+
+mapEl.addEventListener("pointermove", e => {
+  if (activePtrs.has(e.pointerId)) activePtrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  const r=mapEl.getBoundingClientRect();
+  mouse={x:e.clientX-r.left,y:e.clientY-r.top};
+  if (activePtrs.size===2&&pinchD0>0) {
+    const pts=Array.from(activePtrs.values());
+    const cD=Math.hypot(pts[1].x-pts[0].x,pts[1].y-pts[0].y);
+    const cC={x:(pts[0].x+pts[1].x)/2-r.left,y:(pts[0].y+pts[1].y)/2-r.top};
+    view.zoom=Math.max(MIN_ZOOM,Math.min(MAX_ZOOM,pinchZ0*(cD/pinchD0)));
+    view.scale=view.fitScale*(view.zoom/MIN_ZOOM);
+    view.x=cC.x-pinchW0.x*view.scale; view.y=cC.y+pinchW0.y*view.scale;
+    clampView(); redraw();
+  } else if (dragging&&activePtrs.size===1) {
+    view.x=origView.x+(e.clientX-dragStart.x);
+    view.y=origView.y+(e.clientY-dragStart.y);
+    clampView(); requestFrame(true);
+  }
+  requestFrame(false);
+});
+
+function handlePtrEnd(e) {
+  activePtrs.delete(e.pointerId);
+  try{mapEl.releasePointerCapture(e.pointerId);}catch{}
+  if (activePtrs.size===1) {
+    const rem=Array.from(activePtrs.values())[0];
+    dragStart={x:rem.x,y:rem.y}; origView={x:view.x,y:view.y}; dragging=true; return;
+  }
+  if (activePtrs.size===0) {
+    const moved=Math.hypot(e.clientX-ptrDown.x,e.clientY-ptrDown.y)>8;
+    dragging=false; mapEl.classList.remove("dragging");
+    if (!moved&&(e.type==="pointerup"||e.type==="click")) {
+      if (onUI(e.target)) return;
+      /* Double-tap */
+      const now=Date.now(), r=mapEl.getBoundingClientRect();
+      const sx=e.clientX-r.left, sy=e.clientY-r.top;
+      const dtD=Math.hypot(sx-lastTapPos.x,sy-lastTapPos.y);
+      if (now-lastTapTime<DT_MS&&dtD<DT_PX) {
+        lastTapTime=0; doDoubleTap(sx,sy); return;
+      }
+      lastTapTime=now; lastTapPos={x:sx,y:sy};
+      /* Single tap */
+      let rr=false;
+      if (selIds.length>0){selIds=[];rr=true;}
+      if (activeTgtId&&isLive()) {
+        const tg=findItem(activeTgtId); if (tg) removeItem(tg);
+        activeTgtId=null; saveData(); rr=true; showToast("Target removed");
+      }
+      closeCtx(); schedHideTT();
+      if (rr) buildMarkers();
+      else if (!needLive()) {
+        const geo=s2geo(sx,sy);
+        if (inBnd(geo)) openCtx(sx,sy,geo);
+      }
+    }
+  }
+}
+mapEl.addEventListener("pointerup",     handlePtrEnd);
+mapEl.addEventListener("pointercancel", handlePtrEnd);
+
+/* Desktop double-click */
+mapEl.addEventListener("dblclick", e => {
+  if (onUI(e.target)) return;
+  const r=mapEl.getBoundingClientRect();
+  doDoubleTap(e.clientX-r.left,e.clientY-r.top);
+});
+
+function doDoubleTap(sx,sy) {
+  if (needLive()) return;
+  const geo=s2geo(sx,sy); if (!inBnd(geo)) return;
+  openPinDlg(geo);
+}
+function openPinDlg(geo) {
+  pendingPin={lat:geo.lat,lon:geo.lon};
+  pinNameIn.value=""; pinNoteIn.value="";
+  pinTimeIn.value=toLocalInput(Date.now()); pinTimeTouched=false;
+  pinDlg.classList.add("open"); setTimeout(()=>pinNameIn.focus(),50);
+}
+pinTimeIn.addEventListener("input",()=>{ pinTimeTouched=true; });
+
+/* ════════════════════════════════════════════════════════
+   TOOLBAR
+════════════════════════════════════════════════════════ */
+document.getElementById("tbZoomIn").addEventListener("click",  ()=>stepZoomAt(mapEl.clientWidth/2,mapEl.clientHeight/2,1));
+document.getElementById("tbZoomOut").addEventListener("click", ()=>stepZoomAt(mapEl.clientWidth/2,mapEl.clientHeight/2,-1));
+document.getElementById("tbFitBtn").addEventListener("click",  fitMap);
+const tbClear=document.getElementById("tbClearBtn");
+let clearArmed=false, clearT=null;
+const disarmClear=()=>{ clearArmed=false; clearTimeout(clearT); tbClear.classList.remove("armed"); };
+tbClear.addEventListener("click",()=>{
+  if(needLive()) return;
+  if(!clearArmed){
+    /* First tap/click: arm and ask for a second one */
+    clearArmed=true; tbClear.classList.add("armed");
+    showToast((isMobile()?"Tap":"Click")+" again to clear all");
+    clearT=setTimeout(disarmClear,2200);
+    return;
+  }
+  /* Second tap/click (incl. a quick double tap): clear immediately */
+  disarmClear();
+  allItems().forEach(removeItem);
+  selIds=[]; activeTgtId=null; hideTT(); saveData(); buildMarkers(); showToast("Map cleared");
+});
+document.getElementById("tbAddBtn").addEventListener("click",()=>{
+  if (needLive()) return;
+  const c=mapCtr(), geo=s2geo(c.x,c.y);
+  if (!inBnd(geo)){showToast("Centre is off the map");return;}
+  openPinDlg(geo);
+});
+
+document.getElementById("tbTgtBtn").addEventListener("click",()=>{
+  if (needLive()) return;
+  const c=mapCtr(), geo=s2geo(c.x,c.y);
+  if (!inBnd(geo)){showToast("Centre is off the map");return;}
+  const ts=new Date().toISOString();
+  const t={id:uid(),lat:geo.lat,lon:geo.lon,createdAt:ts,time:ts};
+  liveTgts().forEach(removeItem); appData.targets.push(t); selIds=selIds.filter(id=>id!==t.id&&findItem(id)); activeTgtId=t.id;
+  saveData(); buildMarkers(); showToast("Target placed");
+});
+
+/* ════════════════════════════════════════════════════════
+   COORDS HUD
+════════════════════════════════════════════════════════ */
+function updateCoords() {
+  if (!ways.length) return;
+  const c=cursor(), g=s2geo(c.x,c.y);
+  if (Number.isFinite(g.lat)) {
+    latEl.textContent=g.lat.toFixed(6)+"°";
+    lonEl.textContent=g.lon.toFixed(6)+"°";
+  }
+}
+
+/* ════════════════════════════════════════════════════════
+   CONTEXT MENU
+════════════════════════════════════════════════════════ */
+function openCtx(x,y,geo) {
+  ctxLoc={x,y,lat:geo.lat,lon:geo.lon};
+  ctxMenu.classList.remove("hidden");
+  ctxMenu.style.left=Math.min(x+10,mapEl.clientWidth-196)+"px";
+  ctxMenu.style.top =Math.min(y+10,mapEl.clientHeight-155)+"px";
+}
+function closeCtx(){ctxMenu.classList.add("hidden");ctxLoc=null;}
+document.addEventListener("pointerdown",e=>{if(!e.target.closest("#ctxMenu"))closeCtx();});
+
+ctxTgt.addEventListener("click",e=>{
+  e.stopPropagation(); if(!ctxLoc) return;
+  const ts=new Date().toISOString();
+  const t={id:uid(),lat:ctxLoc.lat,lon:ctxLoc.lon,createdAt:ts,time:ts};
+  liveTgts().forEach(removeItem); appData.targets.push(t); selIds=selIds.filter(id=>id!==t.id&&findItem(id)); activeTgtId=t.id;
+  saveData(); buildMarkers(); closeCtx(); showToast("Target placed");
+});
+ctxPin_btn.addEventListener("click",e=>{
+  e.stopPropagation(); if(!ctxLoc) return;
+  const loc=ctxLoc; closeCtx(); openPinDlg(loc);
+});
+document.querySelectorAll(".sym-opt").forEach(btn=>{
+  btn.addEventListener("click",e=>{
+    e.stopPropagation(); if(!ctxLoc) return;
+    const type=btn.dataset.symbol;
+    const ts=new Date().toISOString();
+    appData.symbols.push({id:uid(),type,friendly:nextFriendly,
+      lat:ctxLoc.lat,lon:ctxLoc.lon,createdAt:ts,time:ts});
+    saveData(); buildMarkers(); closeCtx(); showToast(cap(type)+" added");
+  });
+});
+
+/* ════════════════════════════════════════════════════════
+   PIN DIALOG
+════════════════════════════════════════════════════════ */
+const pinAffSw=document.getElementById("pinAffSw"), pinAffLbl=document.getElementById("pinAffLbl");
+paintAff(pinAffSw,pinAffLbl,nextPinFriendly);
+pinAffSw.addEventListener("click",e=>{
+  e.stopPropagation(); nextPinFriendly=!nextPinFriendly; paintAff(pinAffSw,pinAffLbl,nextPinFriendly);
+});
+pinCancel.addEventListener("click",()=>{pinDlg.classList.remove("open");pendingPin=null;});
+pinConfirm.addEventListener("click",()=>{
+  if(!pendingPin) return;
+  const name=pinNameIn.value.trim()||("Pin "+(appData.pins.length+1));
+  const notes=pinNoteIn.value.trim();
+  const picked=pinTimeTouched?Date.parse(pinTimeIn.value):NaN;
+  const ts=new Date().toISOString();
+  const pin={id:uid(),name,lat:pendingPin.lat,lon:pendingPin.lon,
+    friendly:nextPinFriendly,createdAt:ts,time:Number.isFinite(picked)?new Date(picked).toISOString():ts};
+  if(notes) pin.notes=notes;
+  appData.pins.push(pin); saveData(); buildMarkers();
+  pinDlg.classList.remove("open"); pendingPin=null; showToast(`Pin "${name}" saved`);
+});
+
+/* ════════════════════════════════════════════════════════
+   TOOLTIP — inline note editing
+════════════════════════════════════════════════════════ */
+function showTT(title,lat,lon,id) {
+  clearTimeout(ttHideTimer);
+  const item=findItem(id);
+  ttItemId=id; ttEditing=false;
+  ttTitle.textContent=title;
+  ttLat.textContent=lat.toFixed(6)+"°";
+  ttLon.textContent=lon.toFixed(6)+"°";
+  renderTTNote(item?.notes);
+  ttTimeIn.value=item?toLocalInput(itemMs(item)):"";
+  ttNoteEdit.classList.remove("open");
+  const isSym=!!item&&isAff(item);   /* hostile ⇄ friendly switch is for pins and symbols */
+  ttAff.classList.toggle("hidden",!isSym);
+  if(isSym) paintAff(ttAffSw,ttAffLbl,!!item.friendly);
+  markerTT.classList.add("vis");
+  syncTTPos();
+}
+
+function renderTTNote(notes) {
+  if (notes) {
+    ttNoteText.textContent=notes;
+    ttNoteText.className="";
+  } else {
+    ttNoteText.textContent="N/A";
+    ttNoteText.className="na";
+  }
+}
+
+function hideTT() {
+  clearTimeout(ttHideTimer);
+  if (ttEditing) return; // don't hide while editing
+  markerTT.classList.remove("vis");
+  ttItemId=null; ttEditing=false;
+}
+
+function schedHideTT() {
+  clearTimeout(ttHideTimer);
+  ttHideTimer=setTimeout(hideTT,180);
+}
+
+/* Tooltip stays open when mouse enters it */
+markerTT.addEventListener("pointerenter",()=>clearTimeout(ttHideTimer));
+markerTT.addEventListener("pointerleave",()=>{if(!ttEditing) schedHideTT();});
+
+/* Click on note text or edit hint → open inline editor */
+[ttNoteText, ttEditHint].forEach(el=>{
+  el.addEventListener("click",e=>{
+    e.stopPropagation();
+    if(!ttItemId) return;
+    const item=findItem(ttItemId);
+    ttNoteIn.value=item?.notes||"";
+    ttNoteEdit.classList.add("open");
+    ttEditing=true;
+    setTimeout(()=>ttNoteIn.focus(),30);
+  });
+});
+
+ttNoteCanc.addEventListener("click",e=>{
+  e.stopPropagation();
+  ttNoteEdit.classList.remove("open");
+  ttEditing=false;
+  const item=findItem(ttItemId);
+  if(item) renderTTNote(item.notes);
+});
+
+ttNoteSave.addEventListener("click",e=>{
+  e.stopPropagation();
+  if(!ttItemId) return;
+  const item=findItem(ttItemId);
+  if(item){
+    const v=ttNoteIn.value.trim();
+    if(v) item.notes=v; else delete item.notes;
+    saveData(); renderTTNote(item.notes); showToast("Note saved");
+  }
+  ttNoteEdit.classList.remove("open"); ttEditing=false;
+});
+
+/* Hostile ⇄ friendly switch in the tooltip */
+ttAffSw.addEventListener("click",e=>{
+  e.stopPropagation();
+  const item=findItem(ttItemId);
+  if(!item||!isAff(item)||needLive()) return;
+  item.friendly=!item.friendly;
+  paintAff(ttAffSw,ttAffLbl,item.friendly); saveData(); buildMarkers();
+});
+/* … and in the "Add symbol" submenu: affiliation for the next symbols placed */
+const symSub=document.getElementById("symSub"), symAffSw=document.getElementById("symAffSw"), symAffLbl=document.getElementById("symAffLbl");
+paintAff(symAffSw,symAffLbl,nextFriendly);
+symAffSw.addEventListener("click",e=>{
+  e.stopPropagation(); nextFriendly=!nextFriendly;
+  symSub.classList.toggle("friendly",nextFriendly); paintAff(symAffSw,symAffLbl,nextFriendly);
+});
+
+/* Edit an item's time from the tooltip */
+ttTimeIn.addEventListener("focus",()=>{ ttEditing=true; });
+ttTimeIn.addEventListener("blur",()=>{
+  ttEditing=false;
+  if(!markerTT.matches(":hover")) schedHideTT();
+});
+ttTimeIn.addEventListener("change",()=>{
+  const item=findItem(ttItemId); if(!item) return;
+  const ms=Date.parse(ttTimeIn.value);
+  if(!Number.isFinite(ms)){ ttTimeIn.value=toLocalInput(itemMs(item)); showToast("Enter a valid time"); return; }
+  item.time=new Date(ms).toISOString();
+  saveData(); buildMarkers(); showToast("Time updated");
+});
+
+function syncTTPos() {
+  if(!markerTT.classList.contains("vis")||!ttItemId) return;
+  const item=findItem(ttItemId); if(!item) return;
+  const pt=geo2s(item.lat,item.lon);
+  if(pt.x<-60||pt.x>mapEl.clientWidth+60||pt.y<-60||pt.y>mapEl.clientHeight+60){
+    if(!ttEditing) hideTT(); return;
+  }
+  const tw=markerTT.offsetWidth||220, th=markerTT.offsetHeight||120;
+  let lx=pt.x+16, ly=pt.y+16;
+  if(lx+tw>mapEl.clientWidth -8) lx=pt.x-tw-16;
+  if(ly+th>mapEl.clientHeight-8) ly=pt.y-th-16;
+  if(lx<8) lx=8;
+  if(ly<8) ly=8;
+  markerTT.style.left=lx+"px"; markerTT.style.top=ly+"px";
+}
+
+/* ════════════════════════════════════════════════════════
+   TARGET MEASUREMENT LINE
+════════════════════════════════════════════════════════ */
+let tgtLine=null;
+function updateTgtLine() {
+  const t=appData.targets.find(t=>t.id===activeTgtId&&visibleAt(t));
+  let badge=document.getElementById("tgtBadge");
+  if(!t){
+    if(tgtLine) tgtLine.style.display="none";
+    if(badge) badge.style.display="none";
+    return;
+  }
+  const c=cursor(), ts=geo2s(t.lat,t.lon);
+  if(!tgtLine){
+    tgtLine=document.createElementNS("http://www.w3.org/2000/svg","line");
+    tgtLine.setAttribute("stroke",C_DNG); tgtLine.setAttribute("stroke-width","1.5");
+    tgtLine.setAttribute("stroke-dasharray","5,5");
+    tgtLns.appendChild(tgtLine);
+  }
+  tgtLine.style.display="";
+  tgtLine.setAttribute("x1",ts.x); tgtLine.setAttribute("y1",ts.y);
+  tgtLine.setAttribute("x2",c.x);  tgtLine.setAttribute("y2",c.y);
+  const gc=s2geo(c.x,c.y), dist=hav(t.lat,t.lon,gc.lat,gc.lon);
+  if(!badge){badge=document.createElement("div");badge.id="tgtBadge";badge.className="dist-badge";ovlLbls.appendChild(badge);}
+  let deg=Math.atan2(c.y-ts.y,c.x-ts.x)*(180/Math.PI);
+  if(deg>90)deg-=180;if(deg<-90)deg+=180;
+  badge.style.cssText=`display:block;left:${(ts.x+c.x)/2}px;top:${(ts.y+c.y)/2}px;`
+    +`transform:translate(-50%,-50%) rotate(${Math.max(-45,Math.min(45,deg))}deg)`;
+  badge.textContent=fmtD(dist);
+}
+
+/* ════════════════════════════════════════════════════════
+   DISTANCE LINES (between selected pins)
+════════════════════════════════════════════════════════ */
+let linesDrawn=false;
+function rebuildLines() {
+  const active=selIds.map(findItem).filter(Boolean);
+  if(active.length<2 && !linesDrawn) return;
+  pinLns.innerHTML=""; ovlLbls.innerHTML="";
+  const badge=document.getElementById("tgtBadge"); if(badge) ovlLbls.appendChild(badge);
+  linesDrawn=active.length>=2;
+  if(active.length<2) return;
+  for(let i=0;i<active.length;i++) for(let j=i+1;j<active.length;j++) {
+    const pA=geo2s(active[i].lat,active[i].lon), pB=geo2s(active[j].lat,active[j].lon);
+    const mkL=(color,off)=>{
+      const l=document.createElementNS("http://www.w3.org/2000/svg","line");
+      l.setAttribute("x1",pA.x);l.setAttribute("y1",pA.y);l.setAttribute("x2",pB.x);l.setAttribute("y2",pB.y);
+      l.setAttribute("stroke",color);l.setAttribute("stroke-width","2");l.setAttribute("stroke-dasharray","8,22");
+      if(off)l.setAttribute("stroke-dashoffset","-15");
+      pinLns.appendChild(l);
+    };
+    mkL(itemColor(active[i])||C_ACC,false); mkL(itemColor(active[j])||C_DNG,true);
+    let deg=Math.atan2(pB.y-pA.y,pB.x-pA.x)*(180/Math.PI);
+    if(deg>90)deg-=180; if(deg<-90)deg+=180;
+    const b=document.createElement("div");
+    b.className="dist-badge";
+    b.style.cssText=`left:${(pA.x+pB.x)/2}px;top:${(pA.y+pB.y)/2}px;`
+      +`transform:translate(-50%,-50%) rotate(${Math.max(-45,Math.min(45,deg))}deg)`;
+    b.textContent=fmtD(hav(active[i].lat,active[i].lon,active[j].lat,active[j].lon));
+    ovlLbls.appendChild(b);
+  }
+}
+
+/* ════════════════════════════════════════════════════════
+   MARKER DOM POOL — create once, update positions
+════════════════════════════════════════════════════════ */
+
+/* Attach hover (desktop 1s) / long-press (mobile 500ms) */
+function attachMkEvents(el, getItem, getTitle) {
+  /* Long-press for mobile */
+  let lpT=null, lpF=false, lpSx=0, lpSy=0;
+  el.addEventListener("pointerdown",e=>{
+    e.stopPropagation();
+    lpF=false; lpSx=e.clientX; lpSy=e.clientY;
+    if(e.pointerType!=="mouse") {
+      lpT=setTimeout(()=>{
+        lpF=true;
+        const it=getItem();
+        showTT(getTitle(),it.lat,it.lon,it.id);
+      },LONGPRESS_DELAY);
+    }
+  });
+  el.addEventListener("pointermove",e=>{
+    if(Math.hypot(e.clientX-lpSx,e.clientY-lpSy)>8){clearTimeout(lpT);lpT=null;}
+  });
+  el.addEventListener("pointerup",  ()=>{clearTimeout(lpT);lpT=null;});
+  el.addEventListener("pointercancel",()=>{clearTimeout(lpT);lpT=null;});
+  /* Hover for desktop */
+  let hvT=null;
+  el.addEventListener("pointerenter",e=>{
+    if(e.pointerType==="mouse") {
+      hvT=setTimeout(()=>{
+        const it=getItem();
+        showTT(getTitle(),it.lat,it.lon,it.id);
+      },HOVER_DELAY);
+    }
+  });
+  el.addEventListener("pointerleave",e=>{
+    clearTimeout(hvT);
+    if(e.pointerType==="mouse"&&!ttEditing) schedHideTT();
+  });
+  /* Click = select (only if long-press did NOT fire) */
+  el.addEventListener("click",e=>{
+    e.stopPropagation();
+    if(lpF){lpF=false;return;}
+    const it=getItem(); selMk(it.id); buildMarkers();
+  });
+}
+
+function selMk(id) {
+  const idx=selIds.indexOf(id);
+  if(idx!==-1) selIds.splice(idx,1); else selIds.push(id);
+}
+
+/* Full rebuild of marker DOM (called on data changes) */
+function buildMarkers() {
+  /* Only what exists at the viewed time (live = everything not removed) */
+  const vT=appData.targets.filter(visibleAt),
+        vP=appData.pins.filter(visibleAt),
+        vS=appData.symbols.filter(visibleAt);
+  const ids=new Set([...vT,...vP,...vS].map(i=>i.id));
+  selIds=selIds.filter(id=>ids.has(id));
+  if(ttItemId&&!ids.has(ttItemId)){ ttEditing=false; hideTT(); }
+  /* Remove stale */
+  for(const [id,el] of mkPool) {
+    if(!ids.has(id)){el.remove();mkPool.delete(id);}
+  }
+  /* Upsert targets */
+  for(const t of vT) {
+    const isAct=t.id===activeTgtId;
+    if(!mkPool.has(t.id)) {
+      const el=document.createElement("div");
+      el.className="tgt-mk"+(isAct?" active":"");
+      el.innerHTML=iconSpan("target.svg",20,isAct?C_DNG:C_ACC);
+      attachMkEvents(el,()=>t,()=>"Target");
+      mkLayer.appendChild(el); mkPool.set(t.id,el);
+    } else {
+      const el=mkPool.get(t.id);
+      el.className="tgt-mk"+(isAct?" active":"");
+      el.querySelector(".icon").style.color=isAct?C_DNG:C_ACC;
+    }
+    const pt=geo2s(t.lat,t.lon);
+    const el=mkPool.get(t.id);
+    el.style.left=pt.x+"px"; el.style.top=pt.y+"px";
+  }
+  /* Upsert pins */
+  for(const p of vP) {
+    const isSel=selIds.includes(p.id);
+    const color=symColor(p);   /* red = hostile (default, also for older pins), blue = friendly */
+    if(!mkPool.has(p.id)) {
+      const el=document.createElement("div");
+      el.className="marker"+(isSel?" sel":""); el.dataset.c=color;
+      el.innerHTML=`<div class="mk-wrap">
+        <div class="mk-label" style="color:${color}">${esc(p.name)}</div>
+        <div class="mk-icon" style="color:${color}">${iconSpan("location_pin2.svg",30,color)}</div>
+      </div>`;
+      attachMkEvents(el,()=>p,()=>p.name);
+      mkLayer.appendChild(el); mkPool.set(p.id,el);
+    } else {
+      const el=mkPool.get(p.id);
+      el.className="marker"+(isSel?" sel":"");
+      if(el.dataset.c!==color){   /* affiliation switched */
+        el.dataset.c=color;
+        el.querySelector(".mk-label").style.color=color;
+        const ic=el.querySelector(".mk-icon"); ic.style.color=color; ic.querySelector(".icon").style.color=color;
+      }
+    }
+    const pt=geo2s(p.lat,p.lon);
+    const el=mkPool.get(p.id);
+    el.style.left=pt.x+"px"; el.style.top=pt.y+"px";
+  }
+  /* Upsert symbols */
+  for(const s of vS) {
+    const isSel=selIds.includes(s.id);
+    const svgF=SYM_SVG[s.type]||"human.svg";
+    const color=symColor(s);
+    if(!mkPool.has(s.id)) {
+      const el=document.createElement("div");
+      el.className="marker sym"+(isSel?" sel":""); el.dataset.c=color;
+      el.innerHTML=`<div class="mk-wrap">
+        <div class="mk-icon" style="color:${color}">${iconSpan(svgF,30,color)}</div>
+      </div>`;
+      attachMkEvents(el,()=>s,()=>cap(s.type));
+      mkLayer.appendChild(el); mkPool.set(s.id,el);
+    } else {
+      const el=mkPool.get(s.id);
+      el.className="marker sym"+(isSel?" sel":"");
+      if(el.dataset.c!==color){   /* affiliation switched */
+        el.dataset.c=color;
+        const ic=el.querySelector(".mk-icon"); ic.style.color=color; ic.querySelector(".icon").style.color=color;
+      }
+    }
+    const pt=geo2s(s.lat,s.lon);
+    const el=mkPool.get(s.id);
+    el.style.left=pt.x+"px"; el.style.top=pt.y+"px";
+  }
+  rebuildLines(); updateTgtLine(); syncTTPos(); refreshTimeline();
+}
+
+/* Lightweight position-only update (pan/zoom) */
+function positionMarkers() {
+  for(const t of appData.targets) {
+    const el=mkPool.get(t.id); if(!el) continue;
+    const pt=geo2s(t.lat,t.lon);
+    el.style.left=pt.x+"px"; el.style.top=pt.y+"px";
+  }
+  for(const p of appData.pins) {
+    const el=mkPool.get(p.id); if(!el) continue;
+    const pt=geo2s(p.lat,p.lon);
+    el.style.left=pt.x+"px"; el.style.top=pt.y+"px";
+  }
+  for(const s of appData.symbols) {
+    const el=mkPool.get(s.id); if(!el) continue;
+    const pt=geo2s(s.lat,s.lon);
+    el.style.left=pt.x+"px"; el.style.top=pt.y+"px";
+  }
+}
+
+/* ════════════════════════════════════════════════════════
+   DATA — load / save / auto-refresh with backoff
+════════════════════════════════════════════════════════ */
+async function loadData() {
+  try {
+    const r = await fetch(DATA_EP+"?t="+Date.now(),{cache:"no-store"});
+    if(!r.ok) throw new Error("not ok");
+    const d = await r.json();
+    appData = {
+      targets: appData.targets,   /* session-only: never read from the server */
+      pins:    Array.isArray(d.pins)   ?d.pins   :[],
+      symbols: Array.isArray(d.symbols)?d.symbols:[],
+    };
+    /* Older data has no `time` — fall back to when it was created */
+    let migrated=false;
+    for(const it of allItems()) if(!it.time){ it.time=it.createdAt||new Date().toISOString(); migrated=true; }
+    if(migrated) saveData();
+    const lt=liveTgts();
+    if(activeTgtId&&!lt.some(t=>t.id===activeTgtId)) activeTgtId=null;
+    if(lt.length&&!activeTgtId) activeTgtId=lt[lt.length-1].id;
+    setServerStatus(true);
+    refreshBackoff=3000;
+    return true;
+  } catch {
+    setServerStatus(false);
+    return false;
+  }
+}
+
+function saveData() {
+  clearTimeout(saveTimer);
+  saveTimer=setTimeout(async()=>{
+    try {
+      await fetch(DATA_EP,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({targets:[],pins:appData.pins,symbols:appData.symbols})});   /* targets are never saved */
+      setServerStatus(true);
+    } catch { setServerStatus(false); } finally { saveTimer=null; }
+  },120);
+}
+
+function startAutoRefresh() {
+  let t;
+  async function cycle() {
+    const busy=saveTimer||ttEditing||pinDlg.classList.contains("open");
+    if(!busy) {
+      const ok=await loadData();
+      if(!ok) refreshBackoff=Math.min(refreshBackoff*2,30000);
+      else refreshBackoff=3000;
+      buildMarkers();
+    }
+    t=setTimeout(cycle, refreshBackoff);
+  }
+  t=setTimeout(cycle,refreshBackoff);
+}
+
+/* ════════════════════════════════════════════════════════
+   TIMELINE — a window [from, to]; items whose time falls inside it are shown
+════════════════════════════════════════════════════════ */
+/* Every timeline item as {t, kind}, oldest first. kind = symbol type or "pin" (targets are session-only: not on the timeline). */
+function itemEvents() {
+  const ev=[], add=(arr,kindOf)=>{ for(const it of arr){ const t=itemMs(it); if(t>0) ev.push({t,kind:kindOf(it)}); } };
+  add(appData.pins,p=>p.friendly?"pin:f":"pin");
+  add(appData.symbols,s=>(SYM_SVG[s.type]?s.type:"human")+(s.friendly?":f":""));
+  return ev.sort((a,b)=>a.t-b.t);
+}
+const itemTimes = () => itemEvents().map(e=>e.t);
+/* Where the timeline opens / ends: the time of the last item (not the current time) */
+const endT = () => { const t=itemTimes(); return t.length?t[t.length-1]:Date.now(); };
+/* One icon per type — and per affiliation, so friendly symbols count separately in blue */
+const TL_KIND = {};
+for(const [k,f,label] of [["infantry","infantry.svg","Infantry"],["tank","tank.svg","Tank"],["artillery","artillery.svg","Artillery"],["human","human.svg","Symbol"]])
+  TL_KIND[k]={f,label,c:C_HOSTILE};
+for(const k of ["infantry","tank","artillery","human"])
+  TL_KIND[k+":f"]={f:TL_KIND[k].f,label:"Friendly "+TL_KIND[k].label.toLowerCase(),c:C_FRIEND};
+TL_KIND.pin={f:"location_pin2.svg",label:"Pin",c:C_HOSTILE};
+TL_KIND["pin:f"]={f:"location_pin2.svg",label:"Friendly pin",c:C_FRIEND};
+const TL_KIND_ORDER = Object.keys(TL_KIND);
+const TL_ICON=18, TL_SLOT=36, TL_ROWS=3, TL_ROW=21;   /* icon size · width of one column (icon, badge, separator) · max icons stacked vertically · row pitch */
+const DAY=86400000;
+const TL_PRESETS=[300000,1800000,3600000,21600000,DAY];
+const tzOff=t=>-new Date(t).getTimezoneOffset()*60000;
+/* The `dur`-long window on the local clock that contains t: 12:00–12:59, then 1:00–1:59 … */
+function alignedWin(t,dur) {
+  const o=tzOff(t), from=Math.floor((t+o)/dur)*dur-o;
+  return {from,to:from+dur-1};
+}
+const winLen=w=>w.to-w.from+1;
+/* A whole local day (00:00 → 23:59): shown as a single date instead of From / To */
+function isDayWin(w) {
+  const d=new Date(w.from), len=winLen(w);
+  return d.getHours()===0&&d.getMinutes()===0&&d.getSeconds()===0&&d.getMilliseconds()===0&&Math.abs(len-DAY)<=3600000;
+}
+const TL_GAP=3600000;   /* empty stretches longer than this are squeezed (and marked //) */
+/* Squeezed length of an empty stretch: 1:1 up to TL_GAP, then it only grows logarithmically,
+   so a 23 h gap is clearly longer than a 1 h gap, but nowhere near 23x as long. */
+const squeeze=g=>g<=TL_GAP?g:TL_GAP+TL_GAP*Math.log(1+(g-TL_GAP)/TL_GAP);
+let tlK=[{r:0,c:0},{r:60000,c:60000}], tickSig="";
+/* Compressed slider axis: knots map real time (r) to slider position (c).
+   • items close together (≤ TL_BURST apart) form a burst that takes 1 unit (up to 1.5 for a long one),
+     however many items it holds
+   • between bursts: the real gap, but at least 1 unit, and squeezed when long (g:true → compress icon)
+   • the axis ends at the last item */
+const TL_UNIT=1800000, TL_BURST=900000, TL_BURST_SPAN=3600000;
+function tlAxis(ts) {
+  if(!ts.length){ const n=Date.now(); return [{r:n-TL_UNIT,c:0},{r:n,c:TL_UNIT}]; }
+  const k=[]; let c=0, i=0;
+  while(i<ts.length){
+    let j=i; while(j+1<ts.length && ts[j+1]-ts[j]<=TL_BURST) j++;
+    const a=ts[i], b=ts[j];
+    if(i>0){ const gap=a-ts[i-1]; c+=Math.max(TL_UNIT,squeeze(gap)); k.push({r:a,c,g:gap>TL_GAP}); }
+    else k.push({r:a,c});
+    if(b>a){ c+=TL_UNIT*.5*Math.min(1,(b-a)/TL_BURST_SPAN); k.push({r:b,c}); }
+    i=j+1;
+  }
+  if(k.length<2) return [{r:k[0].r-TL_UNIT,c:0},{r:k[0].r,c:TL_UNIT}];
+  return k;
+}
+function toComp(k,t) {
+  const last=k[k.length-1];
+  if(t<=k[0].r) return 0;
+  if(t>=last.r) return last.c;
+  let i=1; while(k[i].r<t) i++;
+  const a=k[i-1], b=k[i];
+  return a.c+(t-a.r)/(b.r-a.r)*(b.c-a.c);
+}
+function fromComp(k,c) {
+  const last=k[k.length-1];
+  if(c<=0) return k[0].r;
+  if(c>=last.c) return last.r;
+  let i=1; while(k[i].c<c) i++;
+  const a=k[i-1], b=k[i];
+  return a.r+(c-a.c)/(b.c-a.c)*(b.r-a.r);
+}
+/* Icon lane: items are grouped by where they fall on the track. A group stacks one icon per type
+   vertically (an "x{count}" badge when more than one); only past TL_ROWS types does it add a second
+   column, divided by a separator. Squeezed gaps get a compress mark on the rail. Click a group to jump to it. */
+function renderTicks(evs) {
+  const W=tlIcons.clientWidth;
+  if(!W) return;   /* bar hidden — draw when it appears */
+  const total=tlK[tlK.length-1].c||1;
+  const sig=W+"|"+Math.round(total/60000)+"|"+evs.map(e=>e.t+":"+e.kind).join(",");
+  if(sig===tickSig) return; tickSig=sig;
+  const cols=n=>Math.ceil(n/TL_ROWS);
+  const groups=[]; let cur=null;
+  for(const e of evs){
+    const x=toComp(tlK,e.t)/total*W;
+    if(cur){
+      const n=cur.kinds.has(e.kind)?cur.kinds.size:cur.kinds.size+1;
+      if(x-cur.x<cols(n)*TL_SLOT){ cur.kinds.set(e.kind,(cur.kinds.get(e.kind)||0)+1); cur.x1=x; continue; }
+    }
+    cur={x,x1:x,t:e.t,kinds:new Map([[e.kind,1]])}; groups.push(cur);
+  }
+  /* centre each group on the stretch it covers, then nudge apart so neighbours never overlap */
+  let rows=1;
+  for(const g of groups){
+    g.kinds=[...g.kinds].sort((a,b)=>TL_KIND_ORDER.indexOf(a[0])-TL_KIND_ORDER.indexOf(b[0]));
+    g.cols=cols(g.kinds.length); rows=Math.max(rows,Math.min(g.kinds.length,TL_ROWS));
+    g.w=(g.cols-1)*TL_SLOT+TL_ICON;
+    g.left=(g.x+g.x1)/2-g.w/2;
+  }
+  const GAP=16, MIN=-7, OVER=7;   /* OVER: how far a badge hangs past its icon */
+  for(let i=0;i<groups.length;i++){
+    const g=groups[i], prev=groups[i-1];
+    g.left=Math.max(MIN,prev?Math.max(g.left,prev.left+prev.w+GAP):g.left);
+  }
+  for(let i=groups.length-1;i>=0;i--){
+    const g=groups[i], next=groups[i+1];
+    g.left=Math.min(g.left,next?next.left-GAP-g.w:W+7-g.w);
+  }
+  const H=2+(rows-1)*TL_ROW+TL_ICON;   /* lane grows only as tall as the tallest stack */
+  tlIcons.style.height=H+"px"; appEl.style.setProperty("--tl-extra",(H-20)+"px");
+  let h="";
+  groups.forEach((g,gi)=>{
+    const tip=g.kinds.map(([k,n])=>TL_KIND[k].label+(n>1?" x"+n:"")).join(", ")+" — click to jump here";
+    h+=`<div class="tl-grp" data-t="${g.t}" title="${tip}" style="left:${g.left}px">`;
+    for(let c=0;c<g.cols;c++){
+      if(c) h+=`<span class="tl-sp">${iconSpan("seperator.svg",14,"currentColor")}</span>`;
+      h+=`<div class="tl-col">`;
+      for(const [k,n] of g.kinds.slice(c*TL_ROWS,(c+1)*TL_ROWS)){
+        const m=TL_KIND[k];
+        h+=`<span class="tl-ic" style="--c:${m.c}">${iconSpan(m.f,TL_ICON,"var(--c)")}${n>1?`<em>x${n}</em>`:""}</span>`;
+      }
+      h+=`</div>`;
+    }
+    h+=`</div>`;
+    const nx=groups[gi+1];   /* neighbouring groups that nearly touch get a separator between them */
+    if(nx && nx.left-(g.left+g.w+OVER)<=GAP) h+=`<span class="tl-gsp" style="left:${(g.left+g.w+OVER+nx.left)/2}px">${iconSpan("seperator.svg",14,"currentColor")}</span>`;
+  });
+  let b="";
+  for(let i=1;i<tlK.length;i++)
+    if(tlK[i].g) b+=`<i style="left:${(tlK[i-1].c+tlK[i].c)/2/total*100}%">${iconSpan("compress.svg",12,"currentColor")}</i>`;
+  tlTicks.innerHTML=b; tlIcons.innerHTML=h;
+}
+function fmtGap(ms) {
+  const m=Math.round(ms/60000); if(m<120) return m+" min";
+  const h=Math.round(m/60); return h<48 ? h+" h" : Math.round(h/24)+" days";
+}
+/* Window of length len that contains t (clock-aligned for the presets) */
+function jumpWin(t,len,endsAtT) {
+  if(TL_PRESETS.includes(len)) return alignedWin(t,len);
+  return endsAtT?{from:t-len+1,to:t}:{from:t,to:t+len-1};
+}
+function setWin(from,to) { win={from,to}; winDur=to-from+1; buildMarkers(); }
+function curWin() { return win||alignedWin(endT(),winDur); }
+
+function refreshTimeline() {
+  const evs=itemEvents(), ts=evs.map(e=>e.t);
+  const w=curWin();
+  if(!tlDrag){
+    tlK=tlAxis(ts);
+    tlRange.min=0; tlRange.max=tlK[tlK.length-1].c;
+    let at=(w.from+w.to)/2;   /* thumb sits on the middle of the window … */
+    if(ts.length){ if(w.to>=ts[ts.length-1]) at=ts[ts.length-1]; else if(w.from<=ts[0]) at=ts[0]; }   /* … except the first / last window, which sit at the ends */
+    tlRange.value=toComp(tlK,at);
+    renderTicks(evs);
+  }
+  const day=isDayWin(w);
+  tlDates.classList.toggle("day",day);
+  if(day){ if(document.activeElement!==tlDay) tlDay.value=toLocalInput(w.from).slice(0,10); }
+  else {
+    if(document.activeElement!==tlFrom) tlFrom.value=toLocalInput(w.from);
+    if(document.activeElement!==tlTo)   tlTo.value=toLocalInput(w.to);
+  }
+  tlBar.classList.toggle("past",!isLive());
+  for(const c of tlChips.children) c.classList.toggle("on",!isLive()&&Math.abs(winLen(w)-(+c.dataset.dur))<60000);
+  tlPrev.disabled=!(ts.length&&ts[0]<w.from);
+  tlNext.disabled=isLive()||!(ts.length&&ts[ts.length-1]>w.to);
+}
+
+/* Toolbar toggle: on = filter by the window, off = show everything as normal */
+function setTimelineMode(on) {
+  if(on===!isLive()) return;
+  win=on?alignedWin(endT(),winDur):null;
+  tbTime.classList.toggle("on",on); tbTime.setAttribute("aria-pressed",on);
+  tlBar.classList.toggle("hidden",!on); appEl.classList.toggle("tl-on",on);
+  closeCtx(); buildMarkers();
+}
+tbTime.addEventListener("click",()=>setTimelineMode(isLive()));
+/* Duration chips: the clock-aligned window of that length containing the current upper limit */
+tlChips.addEventListener("click",e=>{
+  const c=e.target.closest(".tl-chip"); if(!c) return;
+  const w=alignedWin(curWin().to,+c.dataset.dur);
+  setWin(w.from,w.to);
+});
+/* ‹ › snap straight to the window holding the previous / next item (clock-aligned for the presets) */
+tlPrev.addEventListener("click",()=>{
+  const w=curWin(), len=winLen(w);
+  const ti=itemTimes().filter(t=>t<w.from).pop();
+  if(ti===undefined) return;
+  const j=jumpWin(ti,len,true), skipped=w.from-1-j.to;
+  if(skipped>TL_GAP) showToast("Skipped "+fmtGap(skipped)+" with nothing");
+  setWin(j.from,j.to);
+});
+tlNext.addEventListener("click",()=>{
+  if(isLive()) return;
+  const len=winLen(win), tn=itemTimes().find(t=>t>win.to);
+  if(tn===undefined) return;
+  const j=jumpWin(tn,len,false), skipped=j.from-win.to-1;
+  if(skipped>TL_GAP) showToast("Skipped "+fmtGap(skipped)+" with nothing");
+  setWin(j.from,j.to);
+});
+/* Click an icon group: go to the window (same length) that holds its first item */
+tlIcons.addEventListener("click",e=>{
+  const g=e.target.closest(".tl-grp"); if(!g) return;
+  const j=jumpWin(+g.dataset.t,winLen(curWin()),false);
+  setWin(j.from,j.to);
+});
+/* Slider slides the window, keeping its length; the thumb is the window's middle */
+tlRange.addEventListener("pointerdown",()=>{ tlDrag=true; });
+window.addEventListener("pointerup",()=>{ tlDrag=false; });
+window.addEventListener("pointercancel",()=>{ tlDrag=false; });
+tlRange.addEventListener("input",()=>{
+  const v=fromComp(tlK,+tlRange.value), len=isLive()?winDur:winLen(win);
+  const f=Math.round(v-len/2);
+  const w=TL_PRESETS.includes(len)?alignedWin(v,len):{from:f,to:f+len-1};
+  setWin(w.from,w.to);
+});
+/* Exact limits. The picker has minute precision, so To covers the whole minute it names. */
+function applyLimits() {
+  const f=Date.parse(tlFrom.value), t=Date.parse(tlTo.value);
+  if(!Number.isFinite(f)||!Number.isFinite(t)){ resetLimits(); return; }
+  if(f>t+59999){ showToast("From must be before To"); resetLimits(); return; }
+  setWin(f,t+59999);
+}
+function resetLimits() {
+  const w=curWin(); tlFrom.value=toLocalInput(w.from); tlTo.value=toLocalInput(w.to);
+  tlDay.value=toLocalInput(w.from).slice(0,10);
+}
+tlFrom.addEventListener("change",applyLimits);
+tlTo.addEventListener("change",applyLimits);
+tlFrom.addEventListener("blur",refreshTimeline);
+tlTo.addEventListener("blur",refreshTimeline);
+/* Single-date field (shown for 1d windows): picks that whole local day */
+tlDay.addEventListener("change",()=>{
+  const t=Date.parse(tlDay.value+"T12:00");
+  if(!Number.isFinite(t)){ resetLimits(); return; }
+  const w=alignedWin(t,DAY); setWin(w.from,w.to);
+});
+tlDay.addEventListener("blur",refreshTimeline);
+/* Calendar buttons open the native picker of their field */
+for(const b of tlBar.querySelectorAll(".tl-dpick")) b.addEventListener("click",()=>{
+  const inp=document.getElementById(b.dataset.for);
+  try{ inp.showPicker(); }catch(_){ inp.focus(); }
+});
+/* Re-lay the icon lane when the bar changes width */
+new ResizeObserver(()=>refreshTimeline()).observe(tlIcons);
+setInterval(refreshTimeline,1000);
+
+/* ════════════════════════════════════════════════════════
+   TOAST
+════════════════════════════════════════════════════════ */
+let toastT=null;
+function showToast(msg) {
+  toastEl.textContent=msg; toastEl.classList.add("show");
+  clearTimeout(toastT);
+  toastT=setTimeout(()=>toastEl.classList.remove("show"),2200);
+}
+
+/* ════════════════════════════════════════════════════════
+   INIT
+════════════════════════════════════════════════════════ */
+resizeCanvas();
+zoomEl.textContent="1.0×";
+refreshTimeline();
+loadMap();
+</script>
+</body>
+</html>
