@@ -744,6 +744,7 @@ const tlDay      = document.getElementById("tlDay");
 ════════════════════════════════════════════════════════ */
 let nodes = new Map(), ways = [], bounds = null;
 let appData = { targets:[], pins:[], symbols:[] };
+let nextPinNo = 1;   /* number used for the next unnamed pin ("Pin N"); seeded from data.json, persisted */
 let activeTgtId = null, selIds = [], ctxLoc = null,
     pendingPin = null, paletteIdx = 0;
 
@@ -1197,7 +1198,7 @@ document.getElementById("tbFitBtn").addEventListener("click",  fitMap);
 const tbClear=document.getElementById("tbClearBtn");
 let clearArmed=false, clearT=null;
 const disarmClear=()=>{ clearArmed=false; clearTimeout(clearT); tbClear.classList.remove("armed"); };
-tbClear.addEventListener("click",()=>{
+tbClear.addEventListener("click",async()=>{
   if(needLive()) return;
   if(!clearArmed){
     /* First tap/click: arm and ask for a second one */
@@ -1208,7 +1209,10 @@ tbClear.addEventListener("click",()=>{
   }
   /* Second tap/click (incl. a quick double tap): clear immediately */
   disarmClear();
-  allItems().forEach(removeItem);
+  /* Wipe for real (not soft-remove): nothing left on the map, the timeline or the pin counter */
+  appData.targets=[]; appData.pins=[]; appData.symbols=[];
+  const seed=await readSeed(), no=Math.floor(Number([seed.nextNo,seed.nextno,seed.next_no,seed.nextNumber].find(v=>v!==undefined)));
+  nextPinNo=Number.isFinite(no)&&no>=1?no:1;
   selIds=[]; activeTgtId=null; hideTT(); saveData(); buildMarkers(); showToast("Map cleared");
 });
 document.getElementById("tbAddBtn").addEventListener("click",()=>{
@@ -1285,7 +1289,8 @@ pinAffSw.addEventListener("click",e=>{
 pinCancel.addEventListener("click",()=>{pinDlg.classList.remove("open");pendingPin=null;});
 pinConfirm.addEventListener("click",()=>{
   if(!pendingPin) return;
-  const name=pinNameIn.value.trim()||("Pin "+(appData.pins.length+1));
+  let name=pinNameIn.value.trim();
+  if(!name) name="Pin "+(nextPinNo++);
   const notes=pinNoteIn.value.trim();
   const picked=pinTimeTouched?Date.parse(pinTimeIn.value):NaN;
   const ts=new Date().toISOString();
@@ -1672,10 +1677,14 @@ async function loadData() {
       pins:    Array.isArray(d.pins)   ?d.pins   :[],
       symbols: Array.isArray(d.symbols)?d.symbols:[],
     };
+    /* Unnamed-pin counter: data.json's next no (or the saved one); older data falls back to pins + 1 */
+    const rawNo = [d.nextNo,d.nextno,d.next_no,d.nextNumber].find(v=>v!==undefined);
+    const no = Math.floor(Number(rawNo));
+    nextPinNo = Number.isFinite(no)&&no>=1 ? no : appData.pins.length+1;
     /* Older data has no `time` — fall back to when it was created */
     let migrated=false;
     for(const it of allItems()) if(!it.time){ it.time=it.createdAt||new Date().toISOString(); migrated=true; }
-    if(migrated||seeded) saveData();
+    if(migrated||seeded||rawNo===undefined) saveData();
     const lt=liveTgts();
     if(activeTgtId&&!lt.some(t=>t.id===activeTgtId)) activeTgtId=null;
     if(lt.length&&!activeTgtId) activeTgtId=lt[lt.length-1].id;
@@ -1687,7 +1696,7 @@ async function loadData() {
 
 function writeStore() {
   try {
-    localStorage.setItem(STORE_KEY, JSON.stringify({targets:[],pins:appData.pins,symbols:appData.symbols}));   /* targets are never saved */
+    localStorage.setItem(STORE_KEY, JSON.stringify({nextNo:nextPinNo,targets:[],pins:appData.pins,symbols:appData.symbols}));   /* targets are never saved */
     setServerStatus(true);
   } catch { setServerStatus(false); }
 }
