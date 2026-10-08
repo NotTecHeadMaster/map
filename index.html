@@ -556,7 +556,7 @@ button { cursor:pointer; border:none; }
       <div class="cp"><span class="cl">Lon</span><span id="lon" class="cv">—</span></div>
     </div>
     <div id="zoomChip"><b id="zoomLevel">1.0×</b></div>
-    <div id="connDot" title="Server connection"></div>
+    <div id="connDot" title="Storage: OK"></div>
   </div>
 
   <!-- Tools -->
@@ -663,7 +663,8 @@ button { cursor:pointer; border:none; }
 const CROP = { north:29.135267, south:29.098618, west:75.797366, east:75.862087 };
 const DEFAULT_ZOOM_MOBILE = 5, DEFAULT_ZOOM_DESKTOP = 1.2;
 const MIN_ZOOM = 1140000, MAX_ZOOM = 100000000, WHEEL_STEP = 0.2;
-const DATA_EP = "/api/data";
+/* Persistent data lives in the WebView's localStorage (no backend). Same shape the old /api/data used: {targets,pins,symbols} */
+const STORE_KEY = "tacticalmap.data.v1";
 /* Pan margin: fraction of screen allowed beyond map edge */
 const PAN_MARGIN = 0.45;
 /* Hover/hold delays */
@@ -761,8 +762,8 @@ let ttItemId = null, ttEditing = false, ttHideTimer = null;
 let hoverTimer = null, lpTimer = null, lpFired = false;
 /* Marker DOM pool: id → element */
 const mkPool = new Map();
-/* Server health */
-let serverOk = true, refreshBackoff = 3000;
+/* Storage health */
+let serverOk = true;
 let saveTimer = null, editId = null;
 /* Timeline mode: win = null means off (everything not removed is shown as normal),
    otherwise a window {from,to} in ms and only items whose time is inside it are shown */
@@ -842,13 +843,13 @@ function needLive() {
 }
 
 /* ════════════════════════════════════════════════════════
-   SERVER STATUS
+   STORAGE STATUS  (dot is green while local saves succeed, red if they fail)
 ════════════════════════════════════════════════════════ */
 function setServerStatus(ok) {
   if (ok === serverOk) return;
   serverOk = ok;
   connDot.classList.toggle("offline", !ok);
-  connDot.title = ok ? "Server: connected" : "Server: offline";
+  connDot.title = ok ? "Storage: OK" : "Storage: unavailable (changes not saved)";
 }
 
 /* ════════════════════════════════════════════════════════
@@ -877,7 +878,6 @@ async function loadMap() {
     fitMap();
     await loadData();
     buildMarkers();
-    startAutoRefresh();
   } catch {
     emptyMsg.textContent = "Couldn't load map.osm. Check that assets/map.osm exists.";
   }
@@ -1640,58 +1640,69 @@ function positionMarkers() {
 }
 
 /* ════════════════════════════════════════════════════════
-   DATA — load / save / auto-refresh with backoff
+   DATA — load / save (localStorage, fully offline)
 ════════════════════════════════════════════════════════ */
+function readStore() {
+  try {
+    const raw = localStorage.getItem(STORE_KEY);
+    if (raw === null) return null;                 /* nothing saved yet */
+    const d = JSON.parse(raw);
+    return d && typeof d === "object" && !Array.isArray(d) ? d : {};
+  } catch { return undefined; }                    /* storage unavailable / corrupt */
+}
+
+/* First launch only: seed from an optional bundled data.json (static asset, not an API). */
+async function readSeed() {
+  try {
+    const r = await fetch("data.json",{cache:"no-store"});
+    if (!r.ok) return {};
+    const d = await r.json();
+    return d && typeof d === "object" && !Array.isArray(d) ? d : {};
+  } catch { return {}; }
+}
+
 async function loadData() {
   try {
-    const r = await fetch(DATA_EP+"?t="+Date.now(),{cache:"no-store"});
-    if(!r.ok) throw new Error("not ok");
-    const d = await r.json();
+    let d = readStore();
+    let seeded = false;
+    if (d === null) { d = await readSeed(); seeded = true; }
+    if (d === undefined) d = {};                   /* corrupt/unreadable: start empty rather than crash */
     appData = {
-      targets: appData.targets,   /* session-only: never read from the server */
+      targets: appData.targets,   /* session-only: never persisted */
       pins:    Array.isArray(d.pins)   ?d.pins   :[],
       symbols: Array.isArray(d.symbols)?d.symbols:[],
     };
     /* Older data has no `time` — fall back to when it was created */
     let migrated=false;
     for(const it of allItems()) if(!it.time){ it.time=it.createdAt||new Date().toISOString(); migrated=true; }
-    if(migrated) saveData();
+    if(migrated||seeded) saveData();
     const lt=liveTgts();
     if(activeTgtId&&!lt.some(t=>t.id===activeTgtId)) activeTgtId=null;
     if(lt.length&&!activeTgtId) activeTgtId=lt[lt.length-1].id;
-    setServerStatus(true);
-    refreshBackoff=3000;
     return true;
   } catch {
-    setServerStatus(false);
     return false;
   }
 }
 
-function saveData() {
-  clearTimeout(saveTimer);
-  saveTimer=setTimeout(async()=>{
-    try {
-      await fetch(DATA_EP,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({targets:[],pins:appData.pins,symbols:appData.symbols})});   /* targets are never saved */
-      setServerStatus(true);
-    } catch { setServerStatus(false); } finally { saveTimer=null; }
-  },120);
+function writeStore() {
+  try {
+    localStorage.setItem(STORE_KEY, JSON.stringify({targets:[],pins:appData.pins,symbols:appData.symbols}));   /* targets are never saved */
+    setServerStatus(true);
+  } catch { setServerStatus(false); }
 }
 
-function startAutoRefresh() {
-  let t;
-  async function cycle() {
-    const busy=saveTimer||ttEditing||pinDlg.classList.contains("open");
-    if(!busy) {
-      const ok=await loadData();
-      if(!ok) refreshBackoff=Math.min(refreshBackoff*2,30000);
-      else refreshBackoff=3000;
-      buildMarkers();
-    }
-    t=setTimeout(cycle, refreshBackoff);
-  }
-  t=setTimeout(cycle,refreshBackoff);
+function saveData() {
+  clearTimeout(saveTimer);
+  saveTimer=setTimeout(()=>{ saveTimer=null; writeStore(); },120);
 }
+
+/* Don't lose a pending debounced save if the app is backgrounded or closed */
+function flushSave() {
+  if(saveTimer){ clearTimeout(saveTimer); saveTimer=null; writeStore(); }
+}
+document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==="hidden") flushSave(); });
+window.addEventListener("pagehide",flushSave);
 
 /* ════════════════════════════════════════════════════════
    TIMELINE — a window [from, to]; items whose time falls inside it are shown
