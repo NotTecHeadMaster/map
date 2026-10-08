@@ -2,6 +2,9 @@
   "name": "tactical-map",
   "version": "1.0.0",
   "private": true,
+  "scripts": {
+    "build:web": "node -e \"const fs=require('fs');fs.rmSync('www',{recursive:true,force:true});fs.mkdirSync('www');for(const p of ['index.html','assets','data.json'])if(fs.existsSync(p))fs.cpSync(p,'www/'+p,{recursive:true})\""
+  },
   "dependencies": {
     "@capacitor/android": "^6.0.0",
     "@capacitor/core": "^6.0.0"

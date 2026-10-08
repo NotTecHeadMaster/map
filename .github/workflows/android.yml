@@ -13,16 +13,22 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: npm
+          node-version: 22
+          cache: npm   # requires package-lock.json to be committed
 
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
 
+      # Reproducible install: fails if package-lock.json is missing or out of sync
       - name: Install dependencies
-        run: npm install
+        run: npm ci
+
+      # Stage index.html, assets/ and data.json into www/ (Capacitor's webDir).
+      # www/ is generated here and is not committed.
+      - name: Stage web assets
+        run: npm run build:web
 
       # Generates the android/ project if you haven't committed one
       - name: Add Android platform
